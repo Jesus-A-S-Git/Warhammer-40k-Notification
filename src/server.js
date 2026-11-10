@@ -13,15 +13,31 @@ export function createApp() {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100kb' }));
 
+  // Behind a reverse proxy set TRUST_PROXY (e.g. "1" or "loopback") so req.ip is the real client.
+  if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
+
   // Inbound limit: protects our outbound budget from a single noisy client.
-  const clients = new Map();
+  const INBOUND_RPM = 30;
+  const MAX_CLIENTS = 10_000;
+  const clients = new Map(); // ip -> { tokens, last }
+  const prune = setInterval(() => {
+    const cutoff = Date.now() - 60_000; // idle > 1 min means bucket is full again: forget it
+    for (const [ip, l] of clients) if (l.last < cutoff) clients.delete(ip);
+  }, 60_000);
+  prune.unref();
   app.use('/api', (req, res, next) => {
     const ip = req.ip || 'unknown';
-    let l = clients.get(ip);
-    if (!l) { l = { tokens: 30, last: Date.now() }; clients.set(ip, l); }
     const now = Date.now();
-    l.tokens = Math.min(30, l.tokens + ((now - l.last) / 60_000) * 30);
-    l.last = now;
+    let l = clients.get(ip);
+    if (!l) {
+      if (clients.size >= MAX_CLIENTS) clients.delete(clients.keys().next().value);
+      l = { tokens: INBOUND_RPM, last: now };
+    } else {
+      clients.delete(ip); // move to end (LRU order)
+      l.tokens = Math.min(INBOUND_RPM, l.tokens + ((now - l.last) / 60_000) * INBOUND_RPM);
+      l.last = now;
+    }
+    clients.set(ip, l);
     if (l.tokens < 1) return res.status(429).set('Retry-After', '10').json({ error: 'Too many requests' });
     l.tokens -= 1;
     next();

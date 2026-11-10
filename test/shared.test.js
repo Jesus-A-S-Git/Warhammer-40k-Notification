@@ -1,7 +1,8 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { RateLimiter } from '../src/shared/rateLimiter.js';
-import { politeFetch, setHostLimit, __setFetch, __reset } from '../src/shared/httpClient.js';
+import { politeFetch, setHostLimit, getHostLimit, canonicalHost, __setFetch, __reset } from '../src/shared/httpClient.js';
+import { parseRobots, isAllowed } from '../src/shared/robots.js';
 
 test('RateLimiter spaces requests to the configured rate', async () => {
   let t = 0; const slept = [];
@@ -47,10 +48,71 @@ test('politeFetch refuses http', async () => {
 });
 
 test('politeFetch rejects cross-host redirects', async () => {
-  __setFetch(async () => {
-    const r = new Response('{}', { status: 200 });
-    Object.defineProperty(r, 'url', { value: 'https://evil-lookalike.example/x' });
-    return r;
-  });
+  __setFetch(async () => new Response('', { status: 302, headers: { location: 'https://evil-lookalike.example/x' } }));
   await assert.rejects(politeFetch('https://d.example/x'), /Cross-host redirect/);
+});
+
+test('politeFetch follows same-host redirects, each hop rate-limited', async () => {
+  const urls = [];
+  __setFetch(async (u) => { urls.push(u);
+    return u.endsWith('/a') ? new Response('', { status: 301, headers: { location: '/b' } })
+      : new Response('{"ok":true}', { status: 200 }); });
+  setHostLimit('e.example', { requestsPerMinute: 6000, burst: 10 });
+  assert.deepEqual(await politeFetch('https://e.example/a'), { ok: true });
+  assert.deepEqual(urls, ['https://e.example/a', 'https://e.example/b']);
+});
+
+test('limiter keys are canonical (case / trailing dot share one bucket)', () => {
+  assert.equal(canonicalHost('Shop.Example.'), 'shop.example');
+  setHostLimit('Shop.Example.', { requestsPerMinute: 3 });
+  assert.equal(getHostLimit('https://shop.example/x').requestsPerMinute, 3);
+});
+
+test('queue depth is bounded: excess requests fail fast with BUSY', async () => {
+  let t = 0;
+  const rl = new RateLimiter({ requestsPerMinute: 1, burst: 1, maxQueue: 2, now: () => t, sleep: async (ms) => { t += ms; } });
+  const ok = [rl.schedule(async () => 1), rl.schedule(async () => 2)];
+  await assert.rejects(rl.schedule(async () => 3), (e) => e.code === 'BUSY');
+  assert.deepEqual(await Promise.all(ok), [1, 2]);
+});
+
+test('aborted queued request is dropped without consuming a token', async () => {
+  let t = 0; let ran = 0;
+  const rl = new RateLimiter({ requestsPerMinute: 60, burst: 1, now: () => t, sleep: async (ms) => { t += ms; } });
+  const ctrl = new AbortController(); ctrl.abort();
+  await assert.rejects(rl.schedule(async () => { ran++; }, ctrl.signal), (e) => e.code === 'ABORTED');
+  await rl.schedule(async () => { ran++; });
+  assert.equal(ran, 1); assert.equal(t, 0);
+});
+
+test('penalize: no burst accumulates during the block', async () => {
+  let t = 0; const stamps = [];
+  const rl = new RateLimiter({ requestsPerMinute: 60, burst: 5, now: () => t, sleep: async (ms) => { t += ms; } });
+  rl.penalize(10_000);
+  await Promise.all([1, 2].map(() => rl.schedule(async () => stamps.push(t))));
+  assert.ok(stamps[0] >= 11_000 && stamps[1] - stamps[0] >= 1000, String(stamps));
+});
+
+test('robots: RFC 9309 wildcards, Allow precedence and grouped agents', () => {
+  const rules = parseRobots(
+    'User-agent: Googlebot\nUser-agent: *\nDisallow: /*?q=\nDisallow: /search\nAllow: /search/ok$\n', 'Wh40kToolkit');
+  assert.equal(isAllowed(rules, '/products?q=x'), false);
+  assert.equal(isAllowed(rules, '/search/suggest.json'), false);
+  assert.equal(isAllowed(rules, '/search/ok'), true);
+  assert.equal(isAllowed(rules, '/collections/all'), true);
+  const specific = parseRobots('User-agent: *\nDisallow: /\n\nUser-agent: wh40ktoolkit\nAllow: /\n', 'Wh40kToolkit');
+  assert.equal(isAllowed(specific, '/x'), true);
+});
+
+test('robots: 5xx robots.txt means disallow all', async () => {
+  delete process.env.SKIP_ROBOTS;
+  __setFetch(async (u) => (u.endsWith('/robots.txt') ? new Response('', { status: 500 }) : new Response('{}')));
+  setHostLimit('f.example', { requestsPerMinute: 6000, burst: 10 });
+  await assert.rejects(politeFetch('https://f.example/x'), (e) => e.code === 'ROBOTS');
+});
+
+test('very long Retry-After fails fast instead of being shortened', async () => {
+  __setFetch(async () => new Response('', { status: 429, headers: { 'retry-after': '3600' } }));
+  setHostLimit('g.example', { requestsPerMinute: 6000, burst: 10 });
+  await assert.rejects(politeFetch('https://g.example/x'), (e) => e.code === 'RATE_LIMITED');
 });
