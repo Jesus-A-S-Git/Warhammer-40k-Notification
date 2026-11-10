@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Combat Calculator · 40k Toolkit</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .panel h2 { margin: 0 0 12px; font-size: 1.15rem; }
+    .row { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-bottom: 12px; }
+    .checks { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0 12px; }
+    .checks label, label.inline { display: inline-flex; gap: 6px; align-items: center; color: var(--text); font-size: .9rem; margin: 0; }
+    .checks input, label.inline input { width: auto; }
+    fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; min-width: 0; }
+    legend { font-size: .85rem; color: var(--muted); padding: 0 4px; }
+    .weapon { display: grid; grid-template-columns: auto 1fr 74px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .weapon:last-child { border-bottom: 0; }
+    .weapon .name { font-weight: 600; font-size: .92rem; }
+    .weapon .stats { font-size: .78rem; color: var(--muted); }
+    .weapon input[type=number] { padding: 4px 6px; }
+    .profile { font-size: .85rem; color: var(--muted); margin: 0 0 12px; font-variant-numeric: tabular-nums; }
+    .actions { display: flex; gap: 12px; align-items: center; margin: var(--gap) 0; flex-wrap: wrap; }
+    .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 20px; }
+    .tile { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .tile .v { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .tile .k { font-size: .8rem; color: var(--muted); }
+    .funnel { display: grid; gap: 6px; margin-bottom: 20px; }
+    .funnel .step { display: grid; grid-template-columns: 120px 1fr 60px; gap: 10px; align-items: center; font-size: .9rem; }
+    .funnel .track { height: 14px; }
+    .funnel .bar { height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; min-width: 2px; }
+    .chart svg { width: 100%; height: auto; display: block; }
+    .chart .bar { fill: var(--accent); }
+    .chart .bar:hover, .chart .bar:focus { opacity: .8; outline: none; }
+    .chart text { fill: var(--muted); font-size: 11px; }
+    .chart .grid { stroke: var(--border); stroke-width: 1; }
+    .tooltip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: .8rem; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+    h3 { font-size: 1rem; margin: 20px 0 8px; }
+    .hidden { display: none !important; }
+    details summary { cursor: pointer; color: var(--muted); font-size: .85rem; margin: 6px 0; }
+    @media (max-width: 520px) { .funnel .step { grid-template-columns: 90px 1fr 52px; } }
+  </style>
+</head>
+<body>
+  <header class="site"><nav>
+    <a class="brand" href="/">40k Toolkit</a>
+    <a href="/">Home</a>
+    <a href="/prices.html">Price Finder</a>
+    <a href="/combat.html" aria-current="page">Combat Calculator</a>
+  </nav></header>
+  <main>
+    <h1>Combat Calculator</h1>
+    <p class="lede">Pick who shoots (or fights) and who gets hit. The engine applies the 10th edition attack sequence and works out the exact odds of each outcome.</p>
+
+    <form id="form" novalidate>
+      <div class="grid">
+        <section class="card panel" aria-labelledby="att-h">
+          <h2 id="att-h">Attacker</h2>
+          <div class="row">
+            <div><label for="a-search">Search units</label><input id="a-search" type="search" placeholder="e.g. intercessors, boyz"></div>
+            <div><label for="a-unit">Unit</label><select id="a-unit"></select></div>
+          </div>
+          <div class="row">
+            <div><label for="a-models">Models</label><input id="a-models" type="number" min="1" max="30" value="10"></div>
+          </div>
+          <div id="a-custom" class="hidden">
+            <fieldset><legend>Custom weapon</legend>
+              <div class="row">
+                <div><label for="cw-name">Name</label><input id="cw-name" value="Custom weapon"></div>
+                <div><label for="cw-type">Type</label><select id="cw-type"><option value="ranged">Ranged</option><option value="melee">Melee</option></select></div>
+              </div>
+              <div class="row">
+                <div><label for="cw-A">A</label><input id="cw-A" value="2"></div>
+                <div><label for="cw-skill">BS/WS</label><input id="cw-skill" type="number" min="2" max="6" value="3"></div>
+                <div><label for="cw-S">S</label><input id="cw-S" type="number" min="1" max="30" value="4"></div>
+                <div><label for="cw-AP">AP</label><input id="cw-AP" type="number" min="-6" max="0" value="-1"></div>
+                <div><label for="cw-D">D</label><input id="cw-D" value="1"></div>
+              </div>
+              <label for="cw-kw">Keywords (comma separated)</label><input id="cw-kw" placeholder="Lethal Hits, Sustained Hits 1, Anti-Infantry 4+">
+            </fieldset>
+          </div>
+          <fieldset id="a-weapons-fs"><legend>Weapons (tick and set how many models fire each)</legend><div id="a-weapons"></div></fieldset>
+          <fieldset><legend>Situation &amp; modifiers</legend>
+            <div class="checks">
+              <label><input type="checkbox" id="m-stationary"> Remained stationary</label>
+              <label><input type="checkbox" id="m-half"> Within half range</label>
+              <label><input type="checkbox" id="m-charged"> Charged</label>
+              <label><input type="checkbox" id="m-lethal"> Lethal Hits</label>
+              <label><input type="checkbox" id="m-dev"> Devastating Wounds</label>
+              <label><input type="checkbox" id="m-ignorecover"> Ignores Cover</label>
+            </div>
+            <div class="row">
+              <div><label for="m-rh">Re-roll hits</label><select id="m-rh"><option value="none">No</option><option value="ones">Ones</option><option value="failed">Failed</option></select></div>
+              <div><label for="m-rw">Re-roll wounds</label><select id="m-rw"><option value="none">No</option><option value="ones">Ones</option><option value="failed">Failed</option></select></div>
+              <div><label for="m-hit">Hit modifier</label><select id="m-hit"><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option></select></div>
+              <div><label for="m-wound">Wound modifier</label><select id="m-wound"><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option></select></div>
+              <div><label for="m-sus">Sustained Hits</label><select id="m-sus"><option value="">Weapon's</option><option>1</option><option>2</option><option>3</option><option>D3</option></select></div>
+              <div><label for="m-crit">Critical hit on</label><select id="m-crit"><option value="6">6</option><option value="5">5+</option></select></div>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="card panel" aria-labelledby="def-h">
+          <h2 id="def-h">Defender</h2>
+          <div class="row">
+            <div><label for="d-search">Search units</label><input id="d-search" type="search" placeholder="e.g. terminators"></div>
+            <div><label for="d-unit">Unit</label><select id="d-unit"></select></div>
+          </div>
+          <div class="row">
+            <div><label for="d-models">Models</label><input id="d-models" type="number" min="1" max="30" value="5"></div>
+          </div>
+          <p class="profile" id="d-profile" aria-live="polite"></p>
+          <div id="d-custom" class="hidden">
+            <fieldset><legend>Custom profile</legend>
+              <div class="row">
+                <div><label for="cd-T">T</label><input id="cd-T" type="number" min="1" max="30" value="4"></div>
+                <div><label for="cd-Sv">Sv (7 = none)</label><input id="cd-Sv" type="number" min="2" max="7" value="3"></div>
+                <div><label for="cd-inv">Invuln</label><input id="cd-inv" type="number" min="2" max="6" placeholder="none"></div>
+                <div><label for="cd-W">W</label><input id="cd-W" type="number" min="1" max="40" value="2"></div>
+                <div><label for="cd-fnp">FNP</label><input id="cd-fnp" type="number" min="2" max="6" placeholder="none"></div>
+              </div>
+              <label for="cd-kw">Keywords (for Anti-X)</label><input id="cd-kw" value="Infantry">
+            </fieldset>
+          </div>
+          <fieldset><legend>Defensive modifiers</legend>
+            <div class="checks">
+              <label><input type="checkbox" id="dm-cover"> Benefit of Cover</label>
+              <label><input type="checkbox" id="dm-dr"> −1 Damage</label>
+              <label><input type="checkbox" id="dm-stealth"> −1 to be hit</label>
+              <label><input type="checkbox" id="dm-woundmod"> −1 to be wounded</label>
+              <label><input type="checkbox" id="dm-aoc"> Worsen AP by 1</label>
+            </div>
+            <div class="row">
+              <div><label for="dm-fnp">Feel No Pain</label><select id="dm-fnp"><option value="">Unit's</option><option value="6">6+</option><option value="5">5+</option><option value="4">4+</option></select></div>
+              <div><label for="dm-inv">Invulnerable save</label><select id="dm-inv"><option value="">Unit's</option><option value="6">6+</option><option value="5">5+</option><option value="4">4+</option><option value="3">3+</option></select></div>
+            </div>
+          </fieldset>
+        </section>
+      </div>
+      <div class="actions">
+        <button id="go" type="submit">Calculate</button>
+        <span id="status" class="muted" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+
+    <section class="card" id="results" aria-labelledby="res-h" hidden>
+      <h2 id="res-h" style="margin-top:0">Results</h2>
+      <p class="muted" id="res-sub"></p>
+      <div class="tiles" id="tiles"></div>
+      <h3>From attacks to damage</h3>
+      <div class="funnel" id="funnel"></div>
+      <h3 id="chart-h">Models killed: probability</h3>
+      <div class="chart" id="chart" style="position:relative"></div>
+      <details><summary>Show as a table</summary><div class="table-wrap"><table id="dist-table"></table></div></details>
+      <h3>Step by step, per weapon</h3>
+      <div class="table-wrap"><table id="breakdown"></table></div>
+      <p class="muted" id="method" style="font-size:.85rem"></p>
+    </section>
+  </main>
+  <script type="module" src="/combat.js"></script>
+</body>
+</html>

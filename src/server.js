@@ -31,6 +31,14 @@ export function createApp() {
   app.use('/api/prices', priceRouter);
   app.use('/api/combat', combatRouter);
   app.use(express.static(path.join(__dirname, '..', 'public')));
+
+  // JSON error responses for the API (incl. malformed JSON bodies from express.json()).
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    const status = err.status || err.statusCode || 500;
+    if (status >= 500) console.error(err);
+    res.status(status).json({ error: status >= 500 ? 'Internal server error' : (err.type === 'entity.parse.failed' ? 'Malformed JSON body' : err.message) });
+  });
   return app;
 }
 
