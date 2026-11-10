@@ -249,10 +249,10 @@ describe('remote data source', () => {
 
   const fixtures = {
     'Factions.csv': 'id|name|link|\nSM|Space Marines|x|\n',
-    'Datasheets.csv': '﻿id|name|faction_id|virtual|\n000001|Sternguard Veteran Squad|SM|false|\n000002|Intercessor Squad|SM|false|\n',
-    'Datasheets_models.csv': 'datasheet_id|line|name|M|T|Sv|inv_sv|W|Ld|OC|\n000001|1|Sternguard|6"|4|3+|-|2|6+|1|\n000002|1|Intercessor|6"|4|3+|-|2|6+|2|\n',
+    'Datasheets.csv': '﻿id|name|faction_id|virtual|\n000001|Company Heroes|SM|false|\n000002|Intercessor Squad|SM|false|\n',
+    'Datasheets_models.csv': 'datasheet_id|line|name|M|T|Sv|inv_sv|W|Ld|OC|\n000001|1|Company Hero|6"|4|3+|-|2|6+|1|\n000002|1|Intercessor|6"|4|3+|-|2|6+|2|\n',
     'Datasheets_wargear.csv': 'datasheet_id|line|line_in_wargear|dice|name|description|range|type|A|BS_WS|S|AP|D|\n'
-      + '000001|1|1||Sternguard bolt rifle|<a>assault</a>, <a>heavy</a>, <a>devastating wounds</a>|24"|Ranged|2|3+|4|-1|1|\n'
+      + '000001|1|1||Heroic bolt rifle|<a>assault</a>, <a>heavy</a>, <a>devastating wounds</a>|24"|Ranged|2|3+|4|-1|1|\n'
       + '000002|1|1||Bolt rifle||24"|Ranged|2|3+|4|-1|1|\n',
   };
 
@@ -280,11 +280,11 @@ describe('remote data source', () => {
     const units = await refreshRemote({ hostLimit: { requestsPerMinute: 6000, burst: 10 } });
     assert.equal(seen.length, 4);
     assert.ok(seen.every((u) => u.startsWith('https://wahapedia.ru/wh40k10ed/')));
-    const stern = units.find((u) => u.name === 'Sternguard Veteran Squad');
-    assert.ok(stern);
-    assert.equal(stern.faction, 'Space Marines');
-    assert.equal(stern.profile.T, 4);
-    assert.deepEqual(stern.weapons[0].keywords, ['Assault', 'Heavy', 'Devastating Wounds']);
+    const heroes = units.find((u) => u.name === 'Company Heroes');
+    assert.ok(heroes, "imported unit not in seed data is merged in");
+    assert.equal(heroes.faction, 'Space Marines');
+    assert.equal(heroes.profile.T, 4);
+    assert.deepEqual(heroes.weapons[0].keywords, ['Assault', 'Heavy', 'Devastating Wounds']);
     assert.equal(units.filter((u) => u.name === 'Intercessor Squad').length, 1, 'seed wins on duplicates');
     assert.equal(dataSourceStatus().source, 'seed+remote');
   });
