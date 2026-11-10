@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Price Finder · 40k Toolkit</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .search-form { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: end; }
+    @media (min-width: 720px) { .search-form { grid-template-columns: 2fr 1fr 1fr auto auto; } }
+    .check { display: flex; gap: 6px; align-items: center; color: var(--text); margin: 0; padding-bottom: 8px; white-space: nowrap; }
+    .check input { width: auto; }
+    .section { margin-top: var(--gap); }
+    .best h2 { margin: 0 0 4px; font-size: 1rem; color: var(--muted); font-weight: 600; }
+    .best .price { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .best a.title { font-weight: 600; font-size: 1.1rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; }
+    .statuses { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+    .flags .badge { margin: 0 4px 2px 0; }
+    td a { color: var(--accent); }
+    tr.oos td { opacity: .7; }
+    .hidden { display: none; }
+    details summary { cursor: pointer; font-weight: 600; }
+    @media (max-width: 640px) { th.opt, td.opt { display: none; } }
+  </style>
+</head>
+<body>
+  <header class="site"><nav>
+    <a class="brand" href="/">40k Toolkit</a>
+    <a href="/">Home</a>
+    <a href="/prices.html" aria-current="page">Price Finder</a>
+    <a href="/combat.html">Combat Calculator</a>
+  </nav></header>
+  <main>
+    <h1>Price Finder</h1>
+    <p class="lede">Find the cheapest place to buy a kit, searching only vetted retailers. Marketplaces and unknown storefronts are never shown.</p>
+
+    <form class="card search-form" id="search-form" novalidate>
+      <div>
+        <label for="q">Kit or set name</label>
+        <input id="q" name="q" type="search" required minlength="2" maxlength="100"
+               placeholder="e.g. Combat Patrol: Space Marines" autocomplete="off">
+      </div>
+      <div>
+        <label for="region">Region</label>
+        <select id="region" name="region">
+          <option value="All">All regions</option>
+          <option value="UK">UK</option>
+          <option value="US">US</option>
+          <option value="EU">EU</option>
+        </select>
+      </div>
+      <div>
+        <label for="currency">Show prices in</label>
+        <select id="currency" name="currency">
+          <option value="native">Store currency</option>
+          <option value="GBP">GBP (£)</option>
+          <option value="USD">USD ($)</option>
+          <option value="EUR">EUR (€)</option>
+          <option value="CAD">CAD</option>
+          <option value="AUD">AUD</option>
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" id="demo" name="demo"> Demo data</label>
+      <button type="submit" id="go">Search</button>
+    </form>
+
+    <p id="status" class="muted section" role="status" aria-live="polite"></p>
+    <p id="error" class="error hidden" role="alert"></p>
+
+    <div id="results" class="hidden">
+      <div id="best" class="card best section"></div>
+      <div class="card section">
+        <div id="msrp" class="muted"></div>
+        <ul id="retailer-status" class="statuses" aria-label="Retailer status"></ul>
+        <p id="filtered" class="muted" style="margin:8px 0 0"></p>
+      </div>
+      <div class="card section table-wrap">
+        <table>
+          <thead><tr>
+            <th>Retailer</th><th>Product</th><th class="num">Price</th>
+            <th class="num" id="conv-head">Converted</th><th>Stock</th><th class="opt">Flags</th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <p id="disclaimer" class="muted section"></p>
+
+    <details class="card section" id="about">
+      <summary>Which stores are searched, and why they’re trusted</summary>
+      <div id="retailer-list" class="table-wrap" style="margin-top:12px"><p class="muted">Loading…</p></div>
+    </details>
+  </main>
+  <script type="module" src="/prices.js"></script>
+</body>
+</html>
