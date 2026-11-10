@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { retailersInfo } from './rank.js';
+import { retailersInfo, suggestionsPayload, didYouMeanFor } from './rank.js';
+import { expandQuery, normalize } from '../search/fuzzy.js';
 import { RETAILERS, REGIONS, publicRetailer } from './retailers.js';
 import { CURRENCIES, RATES_PER_GBP, RATES_AS_OF } from './currency.js';
 import { searchPrices, DISCLAIMER } from './search.js';
@@ -48,6 +49,11 @@ priceRouter.get('/retailers', (_req, res) => {
   res.json(retailersInfo());
 });
 
+// Autocomplete vocabulary: tracked kits + MSRP table names, plus popular quick picks.
+priceRouter.get('/suggestions', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600').json(suggestionsPayload());
+});
+
 priceRouter.get('/search', async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim().replace(/\s+/g, ' ') : '';
   if (q.length < 2 || q.length > 100) {
@@ -72,7 +78,15 @@ priceRouter.get('/search', async (req, res) => {
   }
   const demo = process.env.PRICE_DEMO === '1' || req.query.demo === '1' || req.query.demo === 'true';
   try {
-    const out = await searchPrices({ query: q, region, currency, demo });
+    // Retailer search engines are not typo-tolerant: send them the corrected,
+    // nickname-expanded query ("termies" -> "terminators") and report the fix.
+    const dym = didYouMeanFor(q);
+    const expanded = expandQuery(dym ? dym.corrected : q).slice(0, 100);
+    const searchQuery = expanded && normalize(expanded) !== normalize(q) ? expanded : q;
+    const out = await searchPrices({ query: searchQuery, region, currency, demo });
+    out.query = q;
+    if (searchQuery !== q) out.searchedFor = searchQuery;
+    out.didYouMean = dym ?? out.didYouMean;
     res.set('Cache-Control', 'no-store').json(out);
   } catch (err) {
     console.error('price search failed', err);

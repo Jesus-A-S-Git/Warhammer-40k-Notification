@@ -46,6 +46,9 @@ export function createApp() {
   app.get('/api/health', (_req, res) => res.json({ ok: true, outbound: limiterStats() }));
   app.use('/api/prices', priceRouter);
   app.use('/api/combat', combatRouter);
+  // Browser-safe shared search modules (same paths as the static build's lib/).
+  app.use('/lib/search', express.static(path.join(__dirname, 'search')));
+  app.get('/lib/combat/unitSearch.js', (_req, res) => res.type('text/javascript').sendFile(path.join(__dirname, 'combat', 'unitSearch.js')));
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
   // JSON error responses for the API (incl. malformed JSON bodies from express.json()).

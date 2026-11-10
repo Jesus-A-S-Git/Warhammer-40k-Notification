@@ -1,64 +1,49 @@
-// Fuzzy title matching: weighted token coverage of the query by the title.
+// Title matching for price offers: the shared fuzzy scorer (typos, plurals,
+// prefixes, nicknames such as "termies" or "cp sm") plus price-specific
+// precision rules (non-kit products, other-faction variants).
+import { normalize, expandQuery, matchDetail } from '../search/fuzzy.js';
 
-const STOP = new Set(['the', 'of', 'a', 'an', 'and', 'for', 'with', 'by', 'in', 'to', '&', 'x']);
-// Tokens that add little meaning; matched if present but weigh less if absent.
-const WEAK_RAW = [
-  ['primaris', 0.3], ['adeptus', 0.3], ['astartes', 0.3], ['warhammer', 0.1], ['40k', 0.1],
-  ['40000', 0.1], ['40', 0.1], ['games', 0.1], ['workshop', 0.1], ['gw', 0.1], ['box', 0.1],
-  ['set', 0.1], ['kit', 0.1], ['miniature', 0.1], ['new', 0.1],
-];
+export { normalize };
+
 // Product categories that are not "the kit" (paints, books, accessories...).
 // A title containing one of these is excluded unless the query asks for it.
 const NON_KIT = ['paint', 'contrast', 'shade', 'citadel colour', 'spray', 'primer', 'brush',
   'codex', 'novel', 'book', 'audiobook', 'black library', 'dice', 'datacard', 'sleeve',
   'transfer', 'decal', 'base', 'figure case', 'carry case', 'poster', 'mug', 't-shirt',
-  'tool', 'clipper', 'glue'];
+  'tool', 'clipper', 'glue'].map(normalize);
 
-export function normalize(s) {
-  return String(s ?? '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
-    .replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-}
+// Words that turn a kit into a different product line: "Chaos Terminators" are
+// not "Terminators", so a title with one of these needs it in the query too.
+const QUALIFIERS = ['chaos'];
 
-function stem(t) {
-  if (t.length > 4 && t.endsWith('ies')) return t.slice(0, -3) + 'y';
-  if (t.length > 3 && t.endsWith('es') && /(sh|ch|x|ss)es$/.test(t)) return t.slice(0, -2);
-  if (t.length > 3 && t.endsWith('s') && !t.endsWith('ss')) return t.slice(0, -1);
-  return t;
-}
+export const MATCH_THRESHOLD = 0.7;
 
-// Keys are stemmed the same way as query/title tokens.
-const WEAK = new Map(WEAK_RAW.map(([k, w]) => [stem(k), w]));
-
-export function tokens(s) {
-  return normalize(s).split(' ').filter((t) => t && !STOP.has(t)).map(stem);
-}
-
-function hasPhrase(normTitle, phrase) {
-  return new RegExp(`(^| )${phrase.replace(/ /g, ' ')}s?( |$)`).test(normTitle);
+function hasPhrase(norm, phrase) {
+  return new RegExp(`(^| )${phrase}s?( |$)`).test(norm);
 }
 
 /**
- * Score how well `title` matches `query` (0..1). Non-kit products score 0
- * unless the query itself mentions that category.
+ * Score how well `title` matches `query` (0..1). Non-kit products and
+ * other-faction variants score 0 unless the query itself mentions them.
  */
 export function matchScore(query, title) {
-  const q = tokens(query);
-  if (!q.length) return 0;
-  const tset = new Set(tokens(title));
-  const nt = normalize(title); const nq = normalize(query);
+  const nq = normalize(query);
+  if (!nq) return 0;
+  const nt = normalize(title);
+  const nqx = `${nq} ${normalize(expandQuery(query))}`;
   for (const cat of NON_KIT) {
-    if (hasPhrase(nt, cat) && !hasPhrase(nq, cat)) return 0;
+    if (hasPhrase(nt, cat) && !hasPhrase(nqx, cat)) return 0;
   }
-  let total = 0; let got = 0;
-  for (const t of new Set(q)) {
-    const w = WEAK.get(t) ?? (/^\d+$/.test(t) ? 0.1 : 1);
-    total += w;
-    if (tset.has(t) || [...tset].some((x) => x.length >= 5 && t.length >= 5 && (x.startsWith(t) || t.startsWith(x)))) got += w;
+  for (const w of QUALIFIERS) {
+    if (hasPhrase(nt, w) && !hasPhrase(nqx, w)) return 0;
   }
-  return total ? got / total : 0;
+  const d = matchDetail(query, title);
+  // Every distinctive word must be found (approximately): "combat patrol space
+  // marines" is not "Boarding Patrol: Space Marines". Long queries may miss one.
+  if (d.missing > (d.distinctive >= 5 ? 1 : 0)) return Math.min(d.score, MATCH_THRESHOLD - 0.01) * (d.missing > 1 ? 0.5 : 1);
+  return d.score;
 }
 
-export const MATCH_THRESHOLD = 0.7;
 export function isMatch(query, title, threshold = MATCH_THRESHOLD) {
   return matchScore(query, title) >= threshold;
 }

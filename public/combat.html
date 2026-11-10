@@ -35,6 +35,9 @@
     .tooltip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: .8rem; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
     h3 { font-size: 1rem; margin: 20px 0 8px; }
     .hidden { display: none !important; }
+    .hint { font-size: .85rem; color: var(--muted); margin: 6px 0 0; }
+    .hint[hidden] { display: none; }
+    button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
     details summary { cursor: pointer; color: var(--muted); font-size: .85rem; margin: 6px 0; }
     @media (max-width: 520px) { .funnel .step { grid-template-columns: 90px 1fr 52px; } }
   </style>
@@ -55,7 +58,8 @@
         <section class="card panel" aria-labelledby="att-h">
           <h2 id="att-h">Attacker</h2>
           <div class="row">
-            <div><label for="a-search">Search units</label><input id="a-search" type="search" placeholder="e.g. intercessors, boyz"></div>
+            <div><label for="a-search">Search units</label><input id="a-search" type="search" placeholder="e.g. intercessors, termies, boyz" autocomplete="off" spellcheck="false" aria-describedby="a-hint">
+              <p class="hint" id="a-hint" role="status" hidden></p></div>
             <div><label for="a-unit">Unit</label><select id="a-unit"></select></div>
           </div>
           <div class="row">
@@ -101,7 +105,8 @@
         <section class="card panel" aria-labelledby="def-h">
           <h2 id="def-h">Defender</h2>
           <div class="row">
-            <div><label for="d-search">Search units</label><input id="d-search" type="search" placeholder="e.g. terminators"></div>
+            <div><label for="d-search">Search units</label><input id="d-search" type="search" placeholder="e.g. terminators, gaunts" autocomplete="off" spellcheck="false" aria-describedby="d-hint">
+              <p class="hint" id="d-hint" role="status" hidden></p></div>
             <div><label for="d-unit">Unit</label><select id="d-unit"></select></div>
           </div>
           <div class="row">

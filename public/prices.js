@@ -2,6 +2,8 @@
 // textContent / setAttribute only, never innerHTML.
 
 import { STATIC, REPO } from './config.js';
+// Shared typo-tolerant scorer (src/search/fuzzy.js; served at lib/search/ in both modes).
+import { bestMatches, suggest, normalize } from './lib/search/fuzzy.js';
 
 const REFRESH_URL = STATIC && /^[\w.-]+\/[\w.-]+$/.test(REPO || '')
   ? `https://github.com/${REPO}/actions/workflows/pages.yml` : null;
@@ -141,8 +143,115 @@ function renderRows(data) {
   }
 }
 
+/* ------------------------------------------------- autocomplete + did you mean */
+
+let vocab = [];       // kit names for suggestions (watchlist + MSRP names, or snapshot titles)
+let popular = [];
+
+/** Show "Did you mean X?" (X is a button that runs that search), or hide it. */
+function renderDidYouMean(corrected, prefix = 'Did you mean') {
+  const box = $('dym');
+  if (!corrected) { box.classList.add('hidden'); box.replaceChildren(); return; }
+  const btn = el('button', { type: 'button', class: 'linkish', text: corrected });
+  btn.addEventListener('click', () => runQuery(corrected));
+  box.replaceChildren(document.createTextNode(`${prefix} `), btn, document.createTextNode('?'));
+  box.classList.remove('hidden');
+}
+
+/** Closest known kit name for a query that found nothing, or null. */
+function closestKit(q) {
+  const fixed = suggest(q, vocab);
+  if (fixed && normalize(fixed) !== normalize(q)) return fixed;
+  const top = bestMatches(q, vocab, { limit: 1, threshold: 0.45 })[0];
+  return top && normalize(top.item) !== normalize(q) ? top.item : null;
+}
+
+function runQuery(q) {
+  $('q').value = q;
+  combo.close();
+  form.requestSubmit();
+}
+
+// ARIA 1.2 combobox with a listbox popup (arrow keys, Enter, Escape, mouse/touch).
+const combo = (() => {
+  const input = $('q');
+  const list = $('q-list');
+  let items = [];
+  let active = -1;
+
+  function setActive(i) {
+    active = i;
+    [...list.children].forEach((li, k) => li.setAttribute('aria-selected', k === i ? 'true' : 'false'));
+    if (i >= 0) {
+      const li = list.children[i];
+      input.setAttribute('aria-activedescendant', li.id);
+      li.scrollIntoView({ block: 'nearest' });
+    } else input.removeAttribute('aria-activedescendant');
+  }
+  function close() {
+    list.hidden = true; items = []; active = -1;
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+  }
+  function open(matches) {
+    items = matches;
+    list.replaceChildren(...matches.map((m, i) => {
+      const li = el('li', { id: `q-opt-${i}`, role: 'option', 'aria-selected': 'false' });
+      li.textContent = m;
+      // pointerdown keeps focus in the input; click picks (works for mouse and touch).
+      li.addEventListener('pointerdown', (e) => e.preventDefault());
+      li.addEventListener('click', () => runQuery(m));
+      return li;
+    }));
+    if (!matches.length) return close();
+    list.hidden = false; active = -1;
+    input.setAttribute('aria-expanded', 'true');
+  }
+  function update() {
+    const q = input.value.trim();
+    if (q.length < 2 || !vocab.length) return close();
+    open(bestMatches(q, vocab, { limit: 8, threshold: 0.6 }).map((m) => m.item));
+  }
+  input.addEventListener('input', update);
+  input.addEventListener('focus', () => { if (input.value.trim().length >= 2) update(); });
+  input.addEventListener('blur', () => setTimeout(close, 120));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (list.hidden) { update(); if (list.hidden) return; }
+      e.preventDefault();
+      const n = items.length;
+      setActive(e.key === 'ArrowDown' ? (active + 1) % n : (active <= 0 ? n - 1 : active - 1));
+    } else if (e.key === 'Enter' && !list.hidden && active >= 0) {
+      e.preventDefault();
+      runQuery(items[active]);
+    } else if (e.key === 'Escape') {
+      if (!list.hidden) { e.preventDefault(); close(); }
+    } else if (e.key === 'Tab') close();
+  });
+  return { close, update };
+})();
+
+async function loadSuggestions() {
+  try {
+    const res = await doFetch('/api/prices/suggestions');
+    if (!res.ok) return;
+    const data = await res.json();
+    vocab = (data.suggestions ?? []).filter((x) => typeof x === 'string');
+    popular = (data.popular ?? []).filter((x) => typeof x === 'string').slice(0, 10);
+  } catch { return; }
+  const row = $('popular');
+  for (const name of popular) {
+    const chip = el('button', { type: 'button', class: 'chip', text: name });
+    chip.addEventListener('click', () => runQuery(name));
+    row.append(chip);
+  }
+  if (popular.length) row.classList.remove('hidden');
+  if (document.activeElement === $('q')) combo.update();
+}
+
 async function search(params) {
   $('error').classList.add('hidden');
+  renderDidYouMean(null);
   $('go').disabled = true;
   $('status').textContent = 'Searching trusted retailers… (live lookups are rate-limited and may take a moment)';
   try {
@@ -153,7 +262,11 @@ async function search(params) {
     $('disclaimer').textContent = data.disclaimer;
     $('results').classList.remove('hidden');
     const n = data.results.length;
-    $('status').textContent = `${n} offer${n === 1 ? '' : 's'} for “${data.query}”${data.demo ? ' (demo data)' : ''}.`;
+    const as = data.searchedFor ? ` (searched as “${data.searchedFor}”)` : '';
+    $('status').textContent = `${n} offer${n === 1 ? '' : 's'} for “${data.query}”${as}${data.demo ? ' (demo data)' : ''}.`;
+    // Typos are already forgiven in the results; offer the corrected spelling,
+    // or, when nothing matched, the closest tracked kit.
+    renderDidYouMean(data.didYouMean?.corrected || (!n ? closestKit(data.query) : null));
     renderSnapshot(data);
   } catch (err) {
     $('status').textContent = '';
@@ -197,6 +310,7 @@ function paramsFromForm() {
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
+  combo.close();
   const q = $('q').value.trim();
   if (q.length < 2 || q.length > 100) {
     $('error').textContent = 'Please enter 2–100 characters.';
@@ -247,6 +361,7 @@ async function loadRetailers() {
   $('about').addEventListener('toggle', () => { if ($('about').open && !$('about').dataset.loaded) { $('about').dataset.loaded = '1'; loadRetailers(); } });
   const q = u.get('q');
   if (q) { $('q').value = q; search(paramsFromForm()); }
+  loadSuggestions();
 })();
 
 if (STATIC) {
