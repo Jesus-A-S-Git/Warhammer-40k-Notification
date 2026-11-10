@@ -3,16 +3,9 @@
 import { RETAILERS } from './retailers.js';
 import { adapterFor } from './adapters/index.js';
 import { demoAdapter, UNTRUSTED_FIXTURES } from './fixtures.js';
-import { checkOffer, flagOffer, compareOffers } from './trust.js';
-import { isMatch, matchScore } from './match.js';
-import { findMsrp, msrpIn } from './msrp.js';
-import { convert, RATES_AS_OF } from './currency.js';
+import { rankOffers, DISCLAIMER } from './rank.js';
 
-export const DISCLAIMER =
-  'Prices and stock change frequently and may exclude shipping. Always verify the final price at '
-  + 'checkout on the retailer’s own site. Converted prices use static approximate exchange rates ('
-  + RATES_AS_OF + '). MSRP values are approximate. Only allowlisted retailers are shown; '
-  + 'links to any other domain are discarded.';
+export { DISCLAIMER };
 
 const DEFAULT_TIMEOUT_MS = 25_000;
 
@@ -94,56 +87,5 @@ export async function searchPrices({
   if (demo) for (const o of UNTRUSTED_FIXTURES) candidates.push({ ...o, __source: null });
   for (const o of extraOffers) candidates.push({ ...o, __source: o.retailerId });
 
-  const dropped = {};
-  const drop = (reason) => { dropped[reason] = (dropped[reason] ?? 0) + 1; };
-  const queryMsrp = findMsrp(query);
-  const seen = new Set();
-  const results = [];
-  const byId = new Map(RETAILERS.map((r) => [r.id, r]));
-
-  for (const c of candidates) {
-    const { __source, ...offer } = c;
-    if (__source && offer.retailerId !== __source) { drop('retailer-mismatch'); continue; }
-    const check = checkOffer(offer);
-    if (!check.ok) { drop(check.reason); continue; }
-    if (!isMatch(query, offer.title)) { drop('no-match'); continue; }
-    const href = new URL(offer.url).href;
-    if (seen.has(href)) { drop('duplicate'); continue; }
-    seen.add(href);
-    const r = byId.get(offer.retailerId);
-    if (region !== 'All' && r.region !== region) { drop('region'); continue; }
-    const { flags, msrp, savingPct } = flagOffer(offer, queryMsrp);
-    const target = currency === 'native' ? null : currency;
-    results.push({
-      retailerId: r.id, retailerName: r.name, tier: r.tier, region: r.region,
-      title: offer.title, url: new URL(offer.url).href, imageUrl: offer.imageUrl,
-      price: Math.round(offer.price * 100) / 100, currency: offer.currency,
-      convertedPrice: target ? convert(offer.price, offer.currency, target) : null,
-      convertedCurrency: target,
-      inStock: typeof offer.inStock === 'boolean' ? offer.inStock : null,
-      msrp, savingPct, flags,
-      relevance: Math.round(matchScore(query, offer.title) * 100) / 100,
-      fetchedAt: offer.fetchedAt ?? new Date().toISOString(),
-      sortValue: convert(offer.price, offer.currency, 'GBP'),
-    });
-  }
-  results.sort(compareOffers);
-  const best = results.find((o) => o.inStock === true && !o.flags.includes('suspicious')) ?? null;
-
-  const order = new Map(retailers.map((r, i) => [r.id, i]));
-  statuses.sort((a, b) => order.get(a.id) - order.get(b.id));
-
-  return {
-    query, region, currency, demo,
-    results: results.map(({ sortValue, ...o }) => o),
-    best: best ? (({ sortValue, ...o }) => o)(best) : null,
-    retailers: statuses,
-    msrp: queryMsrp ? {
-      name: queryMsrp.name, GBP: queryMsrp.GBP, USD: queryMsrp.USD, EUR: queryMsrp.EUR,
-      inCurrency: currency === 'native' ? null : msrpIn(queryMsrp, currency),
-      approximate: true, source: queryMsrp.source,
-    } : null,
-    filtered: dropped,
-    disclaimer: DISCLAIMER,
-  };
+  return rankOffers({ query, region, currency, demo, candidates, statuses, retailers });
 }

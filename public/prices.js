@@ -1,6 +1,14 @@
 // Price Finder UI. All retailer-provided strings are inserted with
 // textContent / setAttribute only, never innerHTML.
 
+import { STATIC, REPO } from './config.js';
+
+const REFRESH_URL = STATIC && /^[\w.-]+\/[\w.-]+$/.test(REPO || '')
+  ? `https://github.com/${REPO}/actions/workflows/pages.yml` : null;
+
+// On the static (GitHub Pages) build, results come from a published snapshot.
+const doFetch = STATIC ? (await import('./static-api.js')).staticFetch : (p, o) => fetch(p, o);
+
 const $ = (id) => document.getElementById(id);
 const form = $('search-form');
 
@@ -38,6 +46,7 @@ const FLAG_BADGE = {
   suspicious: ['bad', 'Suspiciously cheap'],
   'out-of-stock': ['warn', 'Out of stock'],
   'stock-unknown': ['warn', 'Stock unknown'],
+  international: ['warn', 'Ships internationally'],
 };
 function badge(kind, text, title) { return el('span', { class: `badge ${kind}`, text, title }); }
 function tierBadge(tier) { const [k, t] = TIER_BADGE[tier] ?? ['warn', tier]; return badge(k, t); }
@@ -64,10 +73,13 @@ function renderBest(data) {
       el('p', { class: 'muted', text: 'No trusted in-stock offer found for this search.' }));
     return;
   }
-  const conv = b.convertedPrice != null ? ` ≈ ${money(b.convertedPrice, b.convertedCurrency)}` : '';
+  const conv = b.convertedPrice != null && b.convertedCurrency !== b.currency ? ` ≈ ${money(b.convertedPrice, b.convertedCurrency)}` : '';
   box.append(
     el('h2', { text: 'Best price (cheapest trusted, in stock)' }),
     el('div', { class: 'price', text: money(b.price, b.currency) + conv }),
+    b.estTotalHome != null && data.home
+      ? el('div', { class: 'muted', text: `≈ ${money(b.estTotalHome, data.home.currency)} incl. ${data.home.salesTaxLabel}, before shipping` })
+      : (data.home && !b.domestic ? el('div', { class: 'muted', text: `Ships internationally to ${data.home.label}: add shipping and possible import fees.` }) : null),
     extLink(b.url, b.title, 'title'),
     el('div', { class: 'meta' },
       el('span', { text: b.retailerName }), tierBadge(b.tier),
@@ -118,8 +130,11 @@ function renderRows(data) {
     tbody.append(el('tr', { class: o.inStock === false ? 'oos' : null },
       el('td', {}, el('div', { text: o.retailerName }), tierBadge(o.tier)),
       el('td', {}, extLink(o.url, o.title), s ? el('div', { class: 'muted', text: s }) : null),
-      el('td', { class: 'num', text: money(o.price, o.currency) }),
-      el('td', { class: 'num', text: o.convertedPrice != null ? money(o.convertedPrice, o.convertedCurrency) : '–' }),
+      el('td', { class: 'num' }, el('div', { text: money(o.price, o.currency) }),
+        o.estTotalHome != null && data.home
+          ? el('div', { class: 'muted', title: `Incl. ${data.home.salesTaxLabel}`, text: `≈ ${money(o.estTotalHome, data.home.currency)} w/ tax` })
+          : null),
+      el('td', { class: 'num', text: o.convertedPrice != null && o.convertedCurrency !== o.currency ? money(o.convertedPrice, o.convertedCurrency) : '–' }),
       el('td', {}, stockCell(o.inStock)),
       flags,
     ));
@@ -131,7 +146,7 @@ async function search(params) {
   $('go').disabled = true;
   $('status').textContent = 'Searching trusted retailers… (live lookups are rate-limited and may take a moment)';
   try {
-    const res = await fetch(`/api/prices/search?${params}`);
+    const res = await doFetch(`/api/prices/search?${params}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
     renderBest(data); renderMeta(data); renderRows(data);
@@ -139,6 +154,7 @@ async function search(params) {
     $('results').classList.remove('hidden');
     const n = data.results.length;
     $('status').textContent = `${n} offer${n === 1 ? '' : 's'} for “${data.query}”${data.demo ? ' (demo data)' : ''}.`;
+    renderSnapshot(data);
   } catch (err) {
     $('status').textContent = '';
     $('error').textContent = err.message;
@@ -148,12 +164,34 @@ async function search(params) {
   }
 }
 
+function renderSnapshot(data) {
+  const box = $('snapshot-note');
+  if (!box) return;
+  const s = data.snapshot;
+  if (!s) { box.classList.add('hidden'); return; }
+  const when = s.generatedAt ? new Date(s.generatedAt).toLocaleString() : 'never (press “Refresh prices” to fetch the first prices)';
+  const parts = [el('div', { text: `Prices last updated: ${when}. Prices only refresh when the site owner presses “Refresh prices”.` })];
+  if (REFRESH_URL) {
+    parts.push(el('p', {}, el('a', { class: 'button', href: REFRESH_URL, target: '_blank', rel: 'noopener noreferrer',
+      text: 'Refresh prices' }),
+      el('span', { class: 'muted', text: ' Opens GitHub: click “Run workflow” (repo owner only). New prices appear in about 5–10 minutes.' })));
+  }
+  if (s.demo) {
+    parts.push(el('div', { class: 'error', text: `SAMPLE DATA, not real prices. ${s.fallbackReason ?? ''}` }));
+  }
+  if (!data.results.length && s.watchlist?.length) {
+    parts.push(el('div', { class: 'muted', text: `No tracked offers match. Tracked kits: ${s.watchlist.join(', ')}.` }));
+  }
+  box.replaceChildren(...parts);
+  box.classList.remove('hidden');
+}
+
 function paramsFromForm() {
   const p = new URLSearchParams();
   p.set('q', $('q').value.trim());
   p.set('region', $('region').value);
   p.set('currency', $('currency').value);
-  if ($('demo').checked) p.set('demo', '1');
+  if (!STATIC && $('demo').checked) p.set('demo', '1');
   return p;
 }
 
@@ -174,7 +212,7 @@ form.addEventListener('submit', (e) => {
 async function loadRetailers() {
   const box = $('retailer-list');
   try {
-    const res = await fetch('/api/prices/retailers');
+    const res = await doFetch('/api/prices/retailers');
     const data = await res.json();
     const tbody = el('tbody');
     for (const r of data.retailers) {
@@ -210,3 +248,8 @@ async function loadRetailers() {
   const q = u.get('q');
   if (q) { $('q').value = q; search(paramsFromForm()); }
 })();
+
+if (STATIC) {
+  // The static site has no live search or demo toggle: everything comes from the snapshot.
+  $('demo')?.closest('label')?.classList.add('hidden');
+}

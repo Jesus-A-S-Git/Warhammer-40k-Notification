@@ -20,6 +20,42 @@ PRICE_DEMO=1 npm start # price finder uses offline fixture data
 npm test
 ```
 
+## Hosting on GitHub Pages (public site)
+
+The site also builds as a fully static site, deployed by `.github/workflows/pages.yml`.
+
+- **Combat Calculator** runs entirely in the visitor's browser, using the same engine and validation as the server.
+- **Price Finder** searches a **price snapshot** (`data/prices.json`).
+  - Prices are **never refreshed automatically**. The site's **Refresh prices** button opens this repo's
+    "Deploy to GitHub Pages" workflow, where the repo owner clicks **Run workflow**.
+  - A refresh searches each kit in `src/price/watchlist.js` through the rate-limited pipeline and republishes.
+  - The page can't start the workflow itself, because that would need a GitHub token in public code.
+  - Pushes to `main` redeploy the site but keep the published prices.
+  - The browser re-runs the full trust filter on every snapshot offer.
+- **Located for Seattle, WA** (`src/price/location.js`). Edit `location.js` to target another city.
+  - Only US retailers that ship domestically are checked, and prices default to USD.
+  - US offers show an estimated total with Seattle sales tax (≈10.55%, approximate; verify at checkout).
+  - "Best price" prefers domestic retailers, which charge no import fees; overseas offers are flagged.
+- If a refresh can't fetch any live prices (some retailers block cloud IPs), it publishes clearly labelled
+  **sample data**, and the page shows a red "SAMPLE DATA, not real prices" warning.
+
+**One-time setup:**
+1. The repository must be **public** for free GitHub Pages: Settings → General → Danger Zone → Change visibility.
+2. Settings → Pages → Build and deployment → Source: **GitHub Actions**.
+3. Merge to `main` to deploy. Then press **Refresh prices** on the site (or Actions → "Deploy to GitHub Pages" →
+   Run workflow) to fetch the first prices.
+4. The site appears at `https://<your-username>.github.io/Warhammer-40k-Notification/`.
+
+To track more kits, add them to `src/price/watchlist.js`. Each extra kit adds about 10–20 s to a refresh.
+
+Preview the static build locally:
+
+```bash
+npm run snapshot:demo      # or: npm run snapshot (live lookups)
+npm run build:static
+npm run preview:static     # http://localhost:4000/Warhammer-40k-Notification/
+```
+
 ## Rate limiting (outbound API/scrape budget)
 
 Every outbound request goes through `src/shared/httpClient.js` → `politeFetch()`:
