@@ -26,11 +26,13 @@ Every outbound request goes through `src/shared/httpClient.js` → `politeFetch(
 
 | Safeguard | Detail |
 |---|---|
-| Per-host token bucket | Each source registers its own budget; default ≤ 10 req/min, burst 2, 1 concurrent |
+| Per-host token bucket | Retailers 6 req/min, Wahapedia 2 req/min, default ≤ 10; 1 concurrent; bounded queue (fails fast when busy) |
 | Caching | Search results cached ~30 min, unit data 24 h; identical in-flight requests share one fetch |
 | Back-off | Honours `429`/`503` `Retry-After`, exponential backoff, bounded retries |
-| robots.txt | Checked and cached per host |
-| Inbound limit | 30 API calls/min per client IP, so one user can't burn the outbound budget |
+| robots.txt | RFC 9309 rules checked per host (unreachable/5xx robots.txt ⇒ treated as disallowed) |
+| Redirects | Followed hop by hop through the limiter; any redirect off the retailer's domain is rejected |
+| Inbound limit | 30 API calls/min per client IP, plus 5 price searches/min per IP (set `TRUST_PROXY` behind a reverse proxy) |
+| Combat compute | Keyword values bounded, attack caps, exact-solver work budget, Monte Carlo dice budget (worst case ≈ 0.5 s) |
 
 `GET /api/health` shows live limiter state per host.
 
