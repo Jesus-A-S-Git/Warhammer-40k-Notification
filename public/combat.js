@@ -38,7 +38,7 @@ function renderUnitHint(hint, search, query, count) {
   if (!q || count) { hint.hidden = true; return; }
   hint.append(document.createTextNode(`No units match “${q}”.`));
   let fix = suggestUnitQuery(units, q);
-  if (!fix || !rankUnits(units, fix).length) fix = rankUnits(units, q, { threshold: 0.45 })[0]?.unit.name ?? null;
+  if (!fix || !rankUnits(units, fix).length) fix = rankUnits(units, q, { threshold: 0.45, strict: false })[0]?.unit.name ?? null;
   if (fix) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'linkish'; b.textContent = fix;
@@ -63,9 +63,11 @@ function fillSelect(sel, query, keep) {
     sel.append(g);
   }
   sel.append(new Option('Custom profile…', '__custom'));
-  // Keep the current pick while it still matches; otherwise select the best match.
-  if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  // Keep the current unit while it still matches; otherwise select the best match
+  // (a search means "find me a unit", so it also leaves the custom profile).
+  if (keep && (matches.some((u) => u.id === keep) || (keep === '__custom' && !query.trim()))) sel.value = keep;
   else if (matches.length) sel.value = matches[0].id;
+  else sel.value = '__custom';
   return matches.length;
 }
 

@@ -143,15 +143,17 @@ describe('fuzzy: building blocks', () => {
     const items = Array.from({ length: 500 }, (_, i) => `${factions[i % 7]}: ${kits[i % 11]} ${['', 'Kit', 'Box', 'Set'][i % 4]} #${i}`);
     const typed = 'intersessors squad'.split('').map((_, i, a) => a.slice(0, i + 1).join('')).filter((q) => q.length >= 2);
     bestMatches('warmup', items);
-    const t0 = performance.now();
-    for (const q of typed) bestMatches(q, items, { limit: 8 });
-    const per = (performance.now() - t0) / typed.length;
+    // Best of several runs: the suites run in parallel (and on shared CI runners),
+    // so a single run can be slowed by scheduling noise unrelated to this code.
+    const best = (fn, runs) => Math.min(...Array.from({ length: runs }, () => {
+      const t = performance.now(); fn(); return performance.now() - t;
+    }));
+    const per = best(() => { for (const q of typed) bestMatches(q, items, { limit: 8 }); }, 5) / typed.length;
     assert.ok(per < 5, `${per.toFixed(2)} ms per keystroke`);
     // Cold cache (new strings every time) is still fast enough.
-    const fresh = items.map((s) => `${s} v2`);
-    const t1 = performance.now();
-    bestMatches('necron warriers', fresh);
-    assert.ok(performance.now() - t1 < 25);
+    let n = 0;
+    const cold = best(() => { const v = ++n; bestMatches('necron warriers', items.map((s) => `${s} v${v}`)); }, 3);
+    assert.ok(cold < 25, `${cold.toFixed(2)} ms cold`);
   });
 });
 
@@ -333,6 +335,7 @@ describe('combat unit search', () => {
     assert.equal(unitById('necron-warriers', UNITS)?.id, 'necron-warriors');
     assert.equal(unitById('nope', UNITS), null);
     assert.equal(resolveUnit(UNITS, 'guard'), null, 'ambiguous nickname stays unresolved');
+    assert.equal(resolveUnit(UNITS, 'custodes')?.id, 'custodian-guard', 'an exact alias beats faction matches');
   });
 
   test('"Did you mean" for unit searches', () => {
@@ -357,4 +360,11 @@ test('static build ships lib/search/fuzzy.js and the shared unit search', async 
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('silent first letters are forgiven but precision holds', async () => {
+  const { listUnits } = await import('../src/combat/service.js');
+  const { UNITS } = await import('../src/combat/data/units.js');
+  assert.equal(listUnits(UNITS, 'deathwing nights')[0]?.name, 'Deathwing Knights');
+  assert.equal(score('nights', 'Space Marines: Terminators'), 0);
 });

@@ -167,7 +167,9 @@ function tokenSim(q, t) {
   const budget = typoBudget(Math.min(ql, tl));
   if (budget && Math.abs(ql - tl) <= budget) {
     // First letters rarely get mistyped; requiring a match keeps precision.
-    if (q[0] === t[0] || (ql > 1 && tl > 1 && q[0] === t[1] && q[1] === t[0])) {
+    // Also forgive a dropped silent first letter: nights→knights, nome→gnome, raith→wraith.
+    const silent = /^(kn|gn|wr|ps)/.test(t) && q[0] === t[1];
+    if (q[0] === t[0] || silent || (ql > 1 && tl > 1 && q[0] === t[1] && q[1] === t[0])) {
       const d = distance(q, t, budget);
       if (d <= budget) return 1 - 0.1 * d;
     }

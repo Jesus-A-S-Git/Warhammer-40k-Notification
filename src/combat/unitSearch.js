@@ -18,10 +18,11 @@ function isExact(u, s, raw) {
 /**
  * Units matching `q`, best first. Exact name/alias/id matches come first with
  * score 1; the rest are fuzzy-ranked. `coverage` breaks ties (how much of the
- * matched name the query accounts for).
- * @returns {{unit:object, score:number, coverage:number}[]}
+ * matched name the query accounts for). `strict: false` lets a distinctive
+ * query word go unmatched (used for "Did you mean" fallbacks).
+ * @returns {{unit:object, score:number, coverage:number, exact:boolean}[]}
  */
-export function rankUnits(units, q, { threshold = 0.7 } = {}) {
+export function rankUnits(units, q, { threshold = 0.7, strict = true } = {}) {
   const raw = String(q ?? '').trim().toLowerCase().slice(0, 80);
   const s = normalize(raw);
   if (!s) return units.map((unit) => ({ unit, score: 1, coverage: 1 }));
@@ -29,9 +30,9 @@ export function rankUnits(units, q, { threshold = 0.7 } = {}) {
   const qx = `${s} ${normalize(expandQuery(raw))}`;
   const rest = units.filter((u) => !exact.includes(u) && QUALIFIERS.every((w) =>
     hasWord(qx, w) || !hasWord(normalize(`${u.faction} ${u.name}`), w)));
-  const fuzzy = bestMatches(raw, rest, { key: textsFor, limit: Infinity, threshold, requireAll: true });
-  return [...exact.map((unit) => ({ unit, score: 1, coverage: 1 })),
-    ...fuzzy.map((m) => ({ unit: m.item, score: m.score, coverage: m.coverage }))];
+  const fuzzy = bestMatches(raw, rest, { key: textsFor, limit: Infinity, threshold, requireAll: strict });
+  return [...exact.map((unit) => ({ unit, score: 1, coverage: 1, exact: true })),
+    ...fuzzy.map((m) => ({ unit: m.item, score: m.score, coverage: m.coverage, exact: false }))];
 }
 
 /** Same signature as the old data/units.js findUnits: matching units, best first. */
@@ -47,7 +48,7 @@ export function findUnits(units, q) {
 export function resolveUnit(units, q, { min = 0.85 } = {}) {
   const [top, next] = rankUnits(units, q);
   if (!top || top.score < min) return null;
-  if (next && next.score === top.score && next.coverage === top.coverage) return null;
+  if (next && next.exact === top.exact && next.score === top.score && next.coverage === top.coverage) return null;
   return top.unit;
 }
 
