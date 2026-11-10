@@ -163,7 +163,7 @@ function renderResults(r) {
 
   $('method').textContent = (r.method === 'exact'
     ? 'Method: exact probability calculation (dynamic programming over the defending unit\'s state).'
-    : `Method: Monte Carlo simulation, ${r.trials.toLocaleString()} trials (seed ${r.seed}); figures are estimates.`)
+    : `Method: Monte Carlo simulation, ${r.trials.toLocaleString()} trials (seed ${r.seed}); figures are estimates${r.fallbackReason ? ` (${r.fallbackReason})` : ''}.`)
     + ` Rules: ${r.rulesVersion}. Damage does not spill over between models. "Damage" in the funnel counts wounds actually removed; raw damage before allocation losses is ${fmt(e.damage)}.`;
 }
 
