@@ -147,6 +147,14 @@ export async function politeFetch(url, opts = {}) {
         continue;
       }
       if (!res.ok) throw new PoliteFetchError(`HTTP ${res.status} from ${u.host}`, { status: res.status, url, code: 'HTTP' });
+      // Anti-scam: a redirect that leaves the requested host (e.g. to a lookalike
+      // domain) is rejected. Same-host redirects are fine.
+      if (res.url) {
+        const finalHost = new URL(res.url).host;
+        if (finalHost !== u.host) {
+          throw new PoliteFetchError(`Cross-host redirect ${u.host} -> ${finalHost} rejected`, { url, code: 'REDIRECT' });
+        }
+      }
       const body = as === 'json' ? await res.json() : await res.text();
       cache.set(key, body, ttlMs);
       return body;

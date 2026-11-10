@@ -45,3 +45,12 @@ test('politeFetch retries after 429 with Retry-After', async () => {
 test('politeFetch refuses http', async () => {
   await assert.rejects(politeFetch('http://c.example/'), /https/);
 });
+
+test('politeFetch rejects cross-host redirects', async () => {
+  __setFetch(async () => {
+    const r = new Response('{}', { status: 200 });
+    Object.defineProperty(r, 'url', { value: 'https://evil-lookalike.example/x' });
+    return r;
+  });
+  await assert.rejects(politeFetch('https://d.example/x'), /Cross-host redirect/);
+});
