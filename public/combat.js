@@ -10,6 +10,9 @@ const fmt = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d).replace(/\.?0+$/, '
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 import { STATIC } from './config.js';
+// Shared fuzzy unit search (src/combat/unitSearch.js + src/search/fuzzy.js), served
+// at lib/ by the server and copied there by the static build.
+import { rankUnits, suggestUnitQuery } from './lib/combat/unitSearch.js';
 
 // On the static (GitHub Pages) build the same API is answered in-browser.
 const doFetch = STATIC ? (await import('./static-api.js')).staticFetch : (p, o) => fetch(p, o);
@@ -28,12 +31,28 @@ async function getUnit(id) {
 
 /* ------------------------------------------------------------ unit pickers */
 
+/** "No units match" hint with a "Did you mean" button that re-runs the search. */
+function renderUnitHint(hint, search, query, count) {
+  hint.replaceChildren();
+  const q = query.trim();
+  if (!q || count) { hint.hidden = true; return; }
+  hint.append(document.createTextNode(`No units match “${q}”.`));
+  let fix = suggestUnitQuery(units, q);
+  if (!fix || !rankUnits(units, fix).length) fix = rankUnits(units, q, { threshold: 0.45, strict: false })[0]?.unit.name ?? null;
+  if (fix) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'linkish'; b.textContent = fix;
+    b.addEventListener('click', () => { search.value = fix; search.dispatchEvent(new Event('input')); search.focus(); });
+    hint.append(document.createTextNode(' Did you mean '), b, document.createTextNode('?'));
+  } else hint.append(document.createTextNode(' Pick “Custom profile…” to enter stats by hand.'));
+  hint.hidden = false;
+}
+
+/** Fill a unit <select> with units matching `query` (typo/nickname tolerant), best first. */
 function fillSelect(sel, query, keep) {
-  const q = query.trim().toLowerCase();
-  const match = (u) => !q || u.name.toLowerCase().includes(q) || u.faction.toLowerCase().includes(q)
-    || u.aliases.some((a) => a.includes(q));
+  const matches = rankUnits(units, query).map((m) => m.unit);
   const byFaction = new Map();
-  for (const u of units.filter(match)) {
+  for (const u of matches) {
     if (!byFaction.has(u.faction)) byFaction.set(u.faction, []);
     byFaction.get(u.faction).push(u);
   }
@@ -44,7 +63,12 @@ function fillSelect(sel, query, keep) {
     sel.append(g);
   }
   sel.append(new Option('Custom profile…', '__custom'));
-  if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  // Keep the current unit while it still matches; otherwise select the best match
+  // (a search means "find me a unit", so it also leaves the custom profile).
+  if (keep && (matches.some((u) => u.id === keep) || (keep === '__custom' && !query.trim()))) sel.value = keep;
+  else if (matches.length) sel.value = matches[0].id;
+  else sel.value = '__custom';
+  return matches.length;
 }
 
 async function renderAttackerWeapons(preselect) {
@@ -246,19 +270,17 @@ async function init() {
   fillSelect($('d-unit'), '', 'terminator-squad');
   $('a-search').addEventListener('input', async () => {
     const before = $('a-unit').value;
-    fillSelect($('a-unit'), $('a-search').value, before);
-    if ($('a-unit').value !== before) await renderAttackerWeapons();
+    const n = fillSelect($('a-unit'), $('a-search').value, before);
+    renderUnitHint($('a-hint'), $('a-search'), $('a-search').value, n);
+    if ($('a-unit').value !== before) await attackerChanged();
   });
   $('d-search').addEventListener('input', async () => {
     const before = $('d-unit').value;
-    fillSelect($('d-unit'), $('d-search').value, before);
+    const n = fillSelect($('d-unit'), $('d-search').value, before);
+    renderUnitHint($('d-hint'), $('d-search'), $('d-search').value, n);
     if ($('d-unit').value !== before) await defenderChanged();
   });
-  $('a-unit').addEventListener('change', async () => {
-    const u = units.find((x) => x.id === $('a-unit').value);
-    if (u) $('a-models').value = u.models.default;
-    await renderAttackerWeapons();
-  });
+  $('a-unit').addEventListener('change', attackerChanged);
   $('a-models').addEventListener('change', () => {
     const n = Number($('a-models').value) || 1;
     document.querySelectorAll('#a-weapons input[type=number]').forEach((i) => { i.max = n; if (Number(i.value) > n) i.value = n; });
@@ -270,6 +292,12 @@ async function init() {
   $('a-models').value = 10; $('d-models').value = 5;
   await Promise.all([renderAttackerWeapons(['bolt-rifle']), renderDefender()]);
   calculate();
+}
+
+async function attackerChanged() {
+  const u = units.find((x) => x.id === $('a-unit').value);
+  if (u) $('a-models').value = u.models.default;
+  await renderAttackerWeapons();
 }
 
 async function defenderChanged() {

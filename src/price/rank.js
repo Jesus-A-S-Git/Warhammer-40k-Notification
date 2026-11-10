@@ -4,7 +4,9 @@
 import { RETAILERS, publicRetailer } from './retailers.js';
 import { checkOffer, flagOffer, compareOffers, SUSPICIOUS_RATIO } from './trust.js';
 import { isMatch, matchScore } from './match.js';
-import { findMsrp, msrpIn } from './msrp.js';
+import { findMsrp, msrpIn, MSRP_TABLE } from './msrp.js';
+import { WATCHLIST, POPULAR } from './watchlist.js';
+import { suggest, normalize } from '../search/fuzzy.js';
 import { convert, RATES_AS_OF, RATES_PER_GBP } from './currency.js';
 import { HOME } from './location.js';
 
@@ -13,6 +15,37 @@ export const DISCLAIMER =
   + 'checkout on the retailer’s own site. Converted prices use static approximate exchange rates ('
   + RATES_AS_OF + '). MSRP values are approximate. Only allowlisted retailers are shown; '
   + 'links to any other domain are discarded.';
+
+/**
+ * Names for autocomplete and "Did you mean": tracked kits, MSRP table names and
+ * any extra titles (e.g. snapshot offers), de-duplicated case-insensitively.
+ */
+export function suggestionVocabulary(extra = []) {
+  const seen = new Set();
+  const out = [];
+  for (const name of [...WATCHLIST, ...MSRP_TABLE.map((e) => e.name.replace(/\s*\(legacy\)$/, '')), ...extra]) {
+    if (typeof name !== 'string') continue;
+    const n = name.trim().replace(/\s+/g, ' ').slice(0, 120);
+    const k = normalize(n);
+    if (!k || seen.has(k)) continue;
+    seen.add(k); out.push(n);
+  }
+  return out;
+}
+
+/** Payload for GET /api/prices/suggestions. */
+export function suggestionsPayload(extra = []) {
+  return { suggestions: suggestionVocabulary(extra), popular: [...POPULAR] };
+}
+
+/**
+ * "Did you mean" for a price query, or null when nothing was misspelt.
+ * @returns {{query:string, corrected:string}|null}
+ */
+export function didYouMeanFor(query, titles = []) {
+  const corrected = suggest(query, suggestionVocabulary(titles));
+  return corrected && normalize(corrected) !== normalize(query) ? { query, corrected } : null;
+}
 
 /**
  * @param {object} o
@@ -30,6 +63,7 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
   const queryMsrp = findMsrp(query);
   const seen = new Set();
   const results = [];
+  const trustedTitles = [];
   const byId = new Map(RETAILERS.map((r) => [r.id, r]));
 
   for (const c of candidates) {
@@ -37,6 +71,7 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
     if (__source && offer.retailerId !== __source) { drop('retailer-mismatch'); continue; }
     const check = checkOffer(offer);
     if (!check.ok) { drop(check.reason); continue; }
+    if (typeof offer.title === 'string') trustedTitles.push(offer.title);
     if (!isMatch(query, offer.title)) { drop('no-match'); continue; }
     const href = new URL(offer.url).href;
     if (seen.has(href)) { drop('duplicate'); continue; }
@@ -85,6 +120,7 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
       approximate: true, source: queryMsrp.source,
     } : null,
     filtered: dropped,
+    didYouMean: didYouMeanFor(query, trustedTitles),
     home: home ? { ...home } : null,
     disclaimer: DISCLAIMER,
   };

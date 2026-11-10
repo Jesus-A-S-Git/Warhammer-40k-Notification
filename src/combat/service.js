@@ -2,7 +2,7 @@
 // Shared by the Express API (src/combat/routes.js) and the static GitHub Pages
 // build (public/static-api.js), so both enforce identical limits.
 import { simulate, parseDice, parseKeywords, keywordError, RULES_VERSION, MAX_TRIALS } from './engine.js';
-import { findUnits } from './data/units.js';
+import { findUnits, resolveUnit } from './unitSearch.js';
 
 export class BadRequest extends Error {}
 const bad = (msg) => { throw new BadRequest(msg); };
@@ -80,8 +80,8 @@ function weaponSpec(w, name) {
 
 export function unitById(id, units) {
   if (typeof id !== 'string' || id.length > 80) bad('unitId must be a string');
-  return units.find((u) => u.id === id) || findUnits(units, id.replace(/-/g, ' '))
-    .find((u) => u.aliases.includes(id.replace(/-/g, ' ').toLowerCase())) || null;
+  // Exact id, else exact name/alias, else a confident fuzzy match ("termies", "intersessors").
+  return units.find((u) => u.id === id) || resolveUnit(units, id.replace(/-/g, ' ')) || null;
 }
 
 const ATTACKER_MODS = ['hitMod', 'woundMod', 'rerollHits', 'rerollWounds', 'stationary', 'halfRange', 'charged',

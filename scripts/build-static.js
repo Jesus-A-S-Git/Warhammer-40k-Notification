@@ -1,6 +1,7 @@
 // Assembles the static GitHub Pages site in _site/:
 //   public/*                 pages, styles, scripts (config.js switched to STATIC = true)
-//   lib/combat, lib/price    browser-safe modules shared with the server
+//   lib/combat, lib/price,   browser-safe modules shared with the server
+//   lib/search
 //   data/prices.json         price snapshot (from scripts/snapshot-prices.js; kept if present)
 //
 // Usage: node scripts/build-static.js [outDir]
@@ -15,7 +16,8 @@ const out = path.resolve(process.argv[2] ?? path.join(root, '_site'));
 const LIB = [
   'combat/engine.js', 'combat/service.js', 'combat/data/units.js',
   'price/rank.js', 'price/retailers.js', 'price/trust.js', 'price/match.js',
-  'price/msrp.js', 'price/currency.js', 'price/location.js',
+  'price/msrp.js', 'price/currency.js', 'price/location.js', 'price/watchlist.js',
+  'search/fuzzy.js', 'combat/unitSearch.js',
 ];
 
 await mkdir(out, { recursive: true });

@@ -8,7 +8,8 @@
 //           Visitors never contact retailers, so no per-visitor rate limits are needed.
 import { UNITS } from './lib/combat/data/units.js';
 import { BadRequest, listUnits, unitById, runSimulation, RULES_VERSION } from './lib/combat/service.js';
-import { rankOffers, retailersInfo } from './lib/price/rank.js';
+import { rankOffers, retailersInfo, suggestionsPayload } from './lib/price/rank.js';
+import { checkOffer } from './lib/price/trust.js';
 
 let snapshotPromise;
 export function loadSnapshot() {
@@ -44,6 +45,12 @@ async function route(method, url, body) {
   if (method === 'GET' && p === '/api/combat/rules') return reply(200, { rulesVersion: RULES_VERSION });
 
   if (method === 'GET' && p === '/api/prices/retailers') return reply(200, retailersInfo());
+  if (method === 'GET' && p === '/api/prices/suggestions') {
+    // Tracked kits + MSRP names + every title in the published snapshot.
+    let titles = [];
+    try { titles = (await loadSnapshot()).offers.filter((o) => checkOffer(o).ok).map((o) => o.title); } catch { /* snapshot missing: kits only */ }
+    return reply(200, suggestionsPayload(titles));
+  }
   if (method === 'GET' && p === '/api/prices/search') {
     const q = (url.searchParams.get('q') ?? '').trim().replace(/\s+/g, ' ');
     if (q.length < 2 || q.length > 100) return reply(400, { error: 'Query "q" must be 2-100 characters' });

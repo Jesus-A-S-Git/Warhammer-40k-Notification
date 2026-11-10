@@ -4,6 +4,7 @@
 // GW changes prices periodically, so verify on warhammer.com.
 import { convert } from './currency.js';
 import { matchScore } from './match.js';
+import { expandQuery } from '../search/fuzzy.js';
 
 export const MSRP_TABLE = [
   { name: 'Combat Patrol: Space Marines', kit: 'Combat Patrol', GBP: 100, USD: 170, EUR: 120 },
@@ -35,6 +36,7 @@ export const MSRP_TABLE = [
  */
 export function findMsrp(text, { minBack = 0.75, minFwd = 0.75 } = {}) {
   let best = null; let bestKey = -1;
+  text = expandQuery(text); // "cp sm" -> "combat patrol space marines", "termies" -> "terminators"
   for (const e of MSRP_TABLE) {
     const back = matchScore(text, e.name.replace(/\(legacy\)/, ''));
     const fwd = matchScore(e.kit, text);
