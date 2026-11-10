@@ -1,6 +1,11 @@
 // Price Finder UI. All retailer-provided strings are inserted with
 // textContent / setAttribute only, never innerHTML.
 
+import { STATIC } from './config.js';
+
+// On the static (GitHub Pages) build, results come from a published snapshot.
+const doFetch = STATIC ? (await import('./static-api.js')).staticFetch : (p, o) => fetch(p, o);
+
 const $ = (id) => document.getElementById(id);
 const form = $('search-form');
 
@@ -131,7 +136,7 @@ async function search(params) {
   $('go').disabled = true;
   $('status').textContent = 'Searching trusted retailers… (live lookups are rate-limited and may take a moment)';
   try {
-    const res = await fetch(`/api/prices/search?${params}`);
+    const res = await doFetch(`/api/prices/search?${params}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
     renderBest(data); renderMeta(data); renderRows(data);
@@ -139,6 +144,7 @@ async function search(params) {
     $('results').classList.remove('hidden');
     const n = data.results.length;
     $('status').textContent = `${n} offer${n === 1 ? '' : 's'} for “${data.query}”${data.demo ? ' (demo data)' : ''}.`;
+    renderSnapshot(data);
   } catch (err) {
     $('status').textContent = '';
     $('error').textContent = err.message;
@@ -148,12 +154,29 @@ async function search(params) {
   }
 }
 
+function renderSnapshot(data) {
+  const box = $('snapshot-note');
+  if (!box) return;
+  const s = data.snapshot;
+  if (!s) { box.classList.add('hidden'); return; }
+  const when = s.generatedAt ? new Date(s.generatedAt).toLocaleString() : 'never';
+  const parts = [el('div', { text: `Prices last updated: ${when}. Updated automatically every 12 hours.` })];
+  if (s.demo) {
+    parts.push(el('div', { class: 'error', text: `SAMPLE DATA, not real prices. ${s.fallbackReason ?? ''}` }));
+  }
+  if (!data.results.length && s.watchlist?.length) {
+    parts.push(el('div', { class: 'muted', text: `No tracked offers match. Tracked kits: ${s.watchlist.join(', ')}.` }));
+  }
+  box.replaceChildren(...parts);
+  box.classList.remove('hidden');
+}
+
 function paramsFromForm() {
   const p = new URLSearchParams();
   p.set('q', $('q').value.trim());
   p.set('region', $('region').value);
   p.set('currency', $('currency').value);
-  if ($('demo').checked) p.set('demo', '1');
+  if (!STATIC && $('demo').checked) p.set('demo', '1');
   return p;
 }
 
@@ -174,7 +197,7 @@ form.addEventListener('submit', (e) => {
 async function loadRetailers() {
   const box = $('retailer-list');
   try {
-    const res = await fetch('/api/prices/retailers');
+    const res = await doFetch('/api/prices/retailers');
     const data = await res.json();
     const tbody = el('tbody');
     for (const r of data.retailers) {
@@ -210,3 +233,8 @@ async function loadRetailers() {
   const q = u.get('q');
   if (q) { $('q').value = q; search(paramsFromForm()); }
 })();
+
+if (STATIC) {
+  // The static site has no live search or demo toggle: everything comes from the snapshot.
+  $('demo')?.closest('label')?.classList.add('hidden');
+}

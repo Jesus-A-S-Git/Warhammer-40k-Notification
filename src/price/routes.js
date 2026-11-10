@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { retailersInfo } from './rank.js';
 import { RETAILERS, REGIONS, publicRetailer } from './retailers.js';
 import { CURRENCIES, RATES_PER_GBP, RATES_AS_OF } from './currency.js';
 import { searchPrices, DISCLAIMER } from './search.js';
@@ -44,22 +45,7 @@ export function __resetSearchLimiter() { searchLimiter.reset(); }
 
 
 priceRouter.get('/retailers', (_req, res) => {
-  res.json({
-    retailers: RETAILERS.map(publicRetailer),
-    policy: {
-      tiers: {
-        official: 'Games Workshop’s own store; used as the MSRP reference.',
-        authorized: 'Long-established independent stockists selling new GW product themselves.',
-      },
-      excluded: 'Marketplaces (Amazon, eBay, AliExpress, Etsy...) are excluded: listings come from '
-        + 'arbitrary third-party sellers, so a domain allowlist cannot vouch for them.',
-      domainRule: 'Offers are only shown when the product URL is https and its hostname exactly matches '
-        + 'one of the retailer’s registered domains.',
-      suspiciousRule: `Prices below ${Math.round(SUSPICIOUS_RATIO * 100)}% of approximate MSRP are flagged as suspicious.`,
-    },
-    currencies: { rates: RATES_PER_GBP, base: 'GBP', asOf: RATES_AS_OF, approximate: true },
-    disclaimer: DISCLAIMER,
-  });
+  res.json(retailersInfo());
 });
 
 priceRouter.get('/search', async (req, res) => {

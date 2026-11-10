@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Price Finder · 40k Toolkit</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="styles.css">
   <style>
     .search-form { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: end; }
     @media (min-width: 720px) { .search-form { grid-template-columns: 2fr 1fr 1fr auto auto; } }
@@ -25,14 +25,15 @@
 </head>
 <body>
   <header class="site"><nav>
-    <a class="brand" href="/">40k Toolkit</a>
-    <a href="/">Home</a>
-    <a href="/prices.html" aria-current="page">Price Finder</a>
-    <a href="/combat.html">Combat Calculator</a>
+    <a class="brand" href="./">40k Toolkit</a>
+    <a href="./">Home</a>
+    <a href="prices.html" aria-current="page">Price Finder</a>
+    <a href="combat.html">Combat Calculator</a>
   </nav></header>
   <main>
     <h1>Price Finder</h1>
     <p class="lede">Find the cheapest place to buy a kit, searching only vetted retailers. Marketplaces and unknown storefronts are never shown.</p>
+    <div id="snapshot-note" class="card muted hidden" role="status" style="margin-bottom:16px"></div>
 
     <form class="card search-form" id="search-form" novalidate>
       <div>
@@ -92,6 +93,6 @@
       <div id="retailer-list" class="table-wrap" style="margin-top:12px"><p class="muted">Loading…</p></div>
     </details>
   </main>
-  <script type="module" src="/prices.js"></script>
+  <script type="module" src="prices.js"></script>
 </body>
 </html>

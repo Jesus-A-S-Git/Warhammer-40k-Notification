@@ -1,5 +1,5 @@
-// Combat Calculator page. All maths happens server-side in POST /api/combat/simulate
-// (single source of truth: src/combat/engine.js).
+// Combat Calculator page. Maths runs in POST /api/combat/simulate on the server, or
+// in-browser on the static build; both use src/combat/engine.js + service.js.
 
 const $ = (id) => document.getElementById(id);
 const unitCache = new Map();
@@ -9,8 +9,13 @@ const pct = (p) => (p >= 0.995 ? '>99%' : p > 0 && p < 0.005 ? '<1%' : `${Math.r
 const fmt = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d).replace(/\.?0+$/, '') || '0' : '–');
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+import { STATIC } from './config.js';
+
+// On the static (GitHub Pages) build the same API is answered in-browser.
+const doFetch = STATIC ? (await import('./static-api.js')).staticFetch : (p, o) => fetch(p, o);
+
 async function api(path, opts) {
-  const res = await fetch(path, opts);
+  const res = await doFetch(path, opts);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
   return body;
