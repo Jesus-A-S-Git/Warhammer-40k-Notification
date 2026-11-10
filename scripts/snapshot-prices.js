@@ -11,6 +11,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { searchPrices } from '../src/price/search.js';
 import { WATCHLIST } from '../src/price/watchlist.js';
+import { HOME } from '../src/price/location.js';
 
 const args = process.argv.slice(2);
 const forceDemo = args.includes('--demo');
@@ -21,7 +22,8 @@ async function collect(demo) {
   const statuses = new Map(); // retailerId -> status
   const tracked = [];
   for (const query of WATCHLIST) {
-    const r = await searchPrices({ query, region: 'All', currency: 'native', demo });
+    // Only retailers that ship domestically to HOME are queried: fewer requests, relevant prices.
+    const r = await searchPrices({ query, region: HOME.region, currency: 'native', demo });
     for (const o of r.results) {
       if (!offers.has(o.url)) {
         offers.set(o.url, {
@@ -55,6 +57,7 @@ const out = {
   demo,
   fallbackReason,
   watchlist: WATCHLIST,
+  home: HOME,
   ...snap,
 };
 await mkdir(path.dirname(outFile), { recursive: true });

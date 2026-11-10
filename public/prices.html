@@ -19,6 +19,7 @@
     td a { color: var(--accent); }
     tr.oos td { opacity: .7; }
     .hidden { display: none; }
+    a.button { display: inline-block; padding: 9px 16px; border-radius: 6px; background: var(--accent); color: var(--accent-text); font-weight: 600; text-decoration: none; margin-right: 8px; }
     details summary { cursor: pointer; font-weight: 600; }
     @media (max-width: 640px) { th.opt, td.opt { display: none; } }
   </style>
@@ -33,6 +34,7 @@
   <main>
     <h1>Price Finder</h1>
     <p class="lede">Find the cheapest place to buy a kit, searching only vetted retailers. Marketplaces and unknown storefronts are never shown.</p>
+    <p class="muted">📍 Set up for <strong>Seattle, WA</strong>: US retailers and USD by default, with estimated Seattle sales tax. Overseas (UK/EU) stores add international shipping and import fees, so they’re flagged when shown.</p>
     <div id="snapshot-note" class="card muted hidden" role="status" style="margin-bottom:16px"></div>
 
     <form class="card search-form" id="search-form" novalidate>
@@ -46,7 +48,7 @@
         <select id="region" name="region">
           <option value="All">All regions</option>
           <option value="UK">UK</option>
-          <option value="US">US</option>
+          <option value="US" selected>US (ships to Seattle)</option>
           <option value="EU">EU</option>
         </select>
       </div>
@@ -55,7 +57,7 @@
         <select id="currency" name="currency">
           <option value="native">Store currency</option>
           <option value="GBP">GBP (£)</option>
-          <option value="USD">USD ($)</option>
+          <option value="USD" selected>USD ($)</option>
           <option value="EUR">EUR (€)</option>
           <option value="CAD">CAD</option>
           <option value="AUD">AUD</option>

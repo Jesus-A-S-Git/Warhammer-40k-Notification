@@ -15,12 +15,14 @@ const out = path.resolve(process.argv[2] ?? path.join(root, '_site'));
 const LIB = [
   'combat/engine.js', 'combat/service.js', 'combat/data/units.js',
   'price/rank.js', 'price/retailers.js', 'price/trust.js', 'price/match.js',
-  'price/msrp.js', 'price/currency.js',
+  'price/msrp.js', 'price/currency.js', 'price/location.js',
 ];
 
 await mkdir(out, { recursive: true });
 await cp(path.join(root, 'public'), out, { recursive: true });
-await writeFile(path.join(out, 'config.js'), 'export const STATIC = true;\n');
+// GITHUB_REPOSITORY ("owner/repo") is set inside GitHub Actions; used for the Refresh prices button.
+const repo = /^[\w.-]+\/[\w.-]+$/.test(process.env.GITHUB_REPOSITORY ?? '') ? process.env.GITHUB_REPOSITORY : '';
+await writeFile(path.join(out, 'config.js'), `export const STATIC = true;\nexport const REPO = ${JSON.stringify(repo)};\n`);
 await writeFile(path.join(out, '.nojekyll'), '');
 
 for (const f of LIB) {

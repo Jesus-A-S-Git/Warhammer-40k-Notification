@@ -6,6 +6,7 @@ import { checkOffer, flagOffer, compareOffers, SUSPICIOUS_RATIO } from './trust.
 import { isMatch, matchScore } from './match.js';
 import { findMsrp, msrpIn } from './msrp.js';
 import { convert, RATES_AS_OF, RATES_PER_GBP } from './currency.js';
+import { HOME } from './location.js';
 
 export const DISCLAIMER =
   'Prices and stock change frequently and may exclude shipping. Always verify the final price at '
@@ -23,7 +24,7 @@ export const DISCLAIMER =
  * @param {object[]} [o.statuses]  per-retailer status entries
  * @param {object[]} [o.retailers] retailer order for statuses
  */
-export function rankOffers({ query, region = 'All', currency = 'native', demo = false, candidates, statuses = [], retailers = RETAILERS }) {
+export function rankOffers({ query, region = 'All', currency = 'native', demo = false, candidates, statuses = [], retailers = RETAILERS, home = HOME }) {
   const dropped = {};
   const drop = (reason) => { dropped[reason] = (dropped[reason] ?? 0) + 1; };
   const queryMsrp = findMsrp(query);
@@ -44,6 +45,9 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
     if (region !== 'All' && r.region !== region) { drop('region'); continue; }
     const { flags, msrp, savingPct } = flagOffer(offer, queryMsrp);
     const target = currency === 'native' ? null : currency;
+    const domestic = !!home && r.region === home.region;
+    if (home && !domestic) flags.push('international');
+    const homePrice = home ? convert(offer.price, offer.currency, home.currency) : null;
     results.push({
       retailerId: r.id, retailerName: r.name, tier: r.tier, region: r.region,
       title: offer.title, url: new URL(offer.url).href, imageUrl: offer.imageUrl,
@@ -54,11 +58,18 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
       msrp, savingPct, flags,
       relevance: Math.round(matchScore(query, offer.title) * 100) / 100,
       fetchedAt: offer.fetchedAt ?? new Date().toISOString(),
+      domestic,
+      // Estimated total in the home currency incl. destination sales tax (domestic
+      // retailers only; international orders add shipping + import fees instead).
+      estTotalHome: domestic && homePrice != null ? Math.round(homePrice * (1 + home.salesTaxRate) * 100) / 100 : null,
       sortValue: convert(offer.price, offer.currency, 'GBP'),
     });
   }
   results.sort(compareOffers);
-  const best = results.find((o) => o.inStock === true && !o.flags.includes('suspicious')) ?? null;
+  // Best = cheapest trusted in-stock offer, preferring retailers that ship
+  // domestically to the home location (no import fees); else any region.
+  const eligible = (o) => o.inStock === true && !o.flags.includes('suspicious');
+  const best = results.find((o) => eligible(o) && o.domestic) ?? results.find(eligible) ?? null;
 
   const order = new Map(retailers.map((r, i) => [r.id, i]));
   statuses.sort((a, b) => order.get(a.id) - order.get(b.id));
@@ -74,6 +85,7 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
       approximate: true, source: queryMsrp.source,
     } : null,
     filtered: dropped,
+    home: home ? { ...home } : null,
     disclaimer: DISCLAIMER,
   };
 }
@@ -94,6 +106,7 @@ export function retailersInfo() {
       suspiciousRule: `Prices below ${Math.round(SUSPICIOUS_RATIO * 100)}% of approximate MSRP are flagged as suspicious.`,
     },
     currencies: { rates: RATES_PER_GBP, base: 'GBP', asOf: RATES_AS_OF, approximate: true },
+    home: { ...HOME },
     disclaimer: DISCLAIMER,
   };
 }

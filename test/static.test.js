@@ -43,3 +43,26 @@ test('static build: browser-safe libs, STATIC config, relative links, and in-bro
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('Seattle home: domestic offers get est. total with sales tax, best prefers US retailers', async () => {
+  const { rankOffers } = await import('../src/price/rank.js');
+  const { HOME } = await import('../src/price/location.js');
+  assert.equal(HOME.label, 'Seattle, WA');
+  const out = rankOffers({
+    query: 'intercessors',
+    candidates: [
+      // Cheaper but ships from the UK: flagged international, not "best".
+      { retailerId: 'element-games', __source: 'element-games', title: 'Space Marines: Intercessors',
+        url: 'https://elementgames.co.uk/i', price: 36.9, currency: 'GBP', inStock: true },
+      { retailerId: 'miniature-market', __source: 'miniature-market', title: 'Space Marines: Intercessors',
+        url: 'https://www.miniaturemarket.com/i', price: 52, currency: 'USD', inStock: true },
+    ],
+  });
+  const uk = out.results.find((o) => o.retailerId === 'element-games');
+  const us = out.results.find((o) => o.retailerId === 'miniature-market');
+  assert.ok(uk.flags.includes('international'));
+  assert.equal(uk.estTotalHome, null);
+  assert.equal(us.domestic, true);
+  assert.equal(us.estTotalHome, Math.round(52 * (1 + HOME.salesTaxRate) * 100) / 100);
+  assert.equal(out.best.retailerId, 'miniature-market');
+});

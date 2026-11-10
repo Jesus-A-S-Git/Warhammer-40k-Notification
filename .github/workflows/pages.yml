@@ -2,20 +2,27 @@
 #
 # One-time setup: repo Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 #
-# The price snapshot is refreshed every 12 hours by searching the watchlist
-# (src/price/watchlist.js) through the same rate-limited pipeline as the server:
+# Prices are NEVER refreshed automatically. They only update when someone with
+# write access runs this workflow manually (the site's "Refresh prices" button
+# links to this workflow's "Run workflow" page). Pushes to main redeploy the
+# site but reuse the currently published price snapshot.
+#
+# A refresh searches the watchlist (src/price/watchlist.js) at US retailers
+# (home location: Seattle, WA) through the rate-limited pipeline:
 # <= 6 requests/min per retailer, one at a time, robots.txt respected.
 name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: '17 5,17 * * *'
   workflow_dispatch:
     inputs:
+      refresh_prices:
+        description: 'Fetch fresh prices from retailers'
+        type: boolean
+        default: true
       demo:
-        description: 'Publish sample price data instead of live lookups'
+        description: 'Publish sample price data instead (for testing)'
         type: boolean
         default: false
 
@@ -40,11 +47,28 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Refresh price snapshot (rate-limited)
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Refresh price snapshot (manual run only, rate-limited)
+        if: github.event_name == 'workflow_dispatch' && (inputs.refresh_prices || inputs.demo)
         run: node scripts/snapshot-prices.js _site/data/prices.json ${{ inputs.demo && '--demo' || '' }}
+
+      - name: Keep the currently published prices
+        if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.refresh_prices || inputs.demo)) }}
+        env:
+          PAGES_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          mkdir -p _site/data
+          if curl -fsSL "$PAGES_URL/data/prices.json" -o _site/data/prices.json; then
+            echo "Reusing published snapshot."
+          else
+            echo "No published snapshot yet; the site will ask for a price refresh."
+            rm -f _site/data/prices.json
+          fi
+
       - name: Build static site
         run: node scripts/build-static.js _site
-      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
