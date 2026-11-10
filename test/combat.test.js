@@ -2,7 +2,9 @@ import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   simulate, woundTarget, rollTest, saveFor, parseDice, damageDistribution, applyDamage, parseKeywords,
+  keywordError, MAX_TRIALS,
 } from '../src/combat/engine.js';
+import { buildSimulation } from '../src/combat/routes.js';
 import { UNITS, findUnits } from '../src/combat/data/units.js';
 import {
   refreshRemote, getUnits, dataSourceStatus, parsePipeCsv, normalizeWahapedia, __resetDataSource, REMOTE_LIMIT,
@@ -388,5 +390,71 @@ describe('API', () => {
         assert.equal(typeof j.error, 'string');
       }
     });
+  });
+});
+
+describe('resource limits (DoS protection)', () => {
+  test('keyword allowlist with bounded values', () => {
+    for (const k of ['Melta 100000000', 'Rapid Fire 1000000', 'Sustained Hits 7', 'Sustained Hits 2D6', 'Anti-Infantry 1+', 'Explodes Everything']) {
+      assert.ok(keywordError(k), k);
+    }
+    for (const k of ['Melta 2', 'Rapid Fire 6', 'Sustained Hits D3', 'Sustained Hits 6', 'Anti-Vehicle 3+', 'Assault', 'Hazardous']) {
+      assert.equal(keywordError(k), null, k);
+    }
+    assert.throws(() => parseKeywords(['Melta 100000000']));
+    assert.throws(() => parseKeywords(['Rapid Fire 1000000']));
+    for (const u of UNITS) for (const w of u.weapons) for (const k of w.keywords) assert.equal(keywordError(k), null, `${u.id}/${k}`);
+  });
+
+  test('forced exact respects the work budget and falls back to Monte Carlo', () => {
+    const w = { name: 'big', A: '2D6+8', skill: 2, S: 6, AP: 0, D: 'D6', keywords: ['Devastating Wounds', 'Sustained Hits 1'] };
+    const r = one(w, 30, { models: 30, T: 4, Sv: 2, inv: 2, W: 40, fnp: 4 }, { options: { method: 'exact' } });
+    assert.equal(r.method, 'monte-carlo');
+    assert.match(r.fallbackReason, /budget/);
+    assert.ok(r.trials <= MAX_TRIALS);
+  });
+
+  const W = (o) => ({ name: 'w', skill: 2, S: 4, AP: 0, ...o });
+  const worst = {
+    devForcedExact: { attacker: { custom: { weapons: [W({ A: '2D6+8', S: 6, D: 'D6', keywords: ['Devastating Wounds', 'Sustained Hits 1'] })] }, models: 30 },
+      defender: { custom: { T: 4, Sv: 2, inv: 2, W: 40, fnp: 4 }, models: 30 }, options: { method: 'exact', trials: 20000 } },
+    tenWeapons: { attacker: { custom: { weapons: Array.from({ length: 10 }, () => W({ A: '2D6', D: 'D6+2', keywords: ['Devastating Wounds'] })) }, models: 10 },
+      defender: { custom: { T: 8, Sv: 2, inv: 2, W: 40, fnp: 2 }, models: 30 }, options: { method: 'exact' } },
+    meltaRapidFire: { attacker: { custom: { weapons: [W({ A: '2D6+6', D: '2D6+18', S: 12, keywords: ['Melta 6', 'Rapid Fire 6', 'Blast', 'Sustained Hits 1'] })] }, models: 20, modifiers: { halfRange: true } },
+      defender: { custom: { T: 30, Sv: 2, W: 40, fnp: 2 }, models: 30 }, options: { method: 'monte-carlo', trials: 20000 } },
+    exactNearBudget: { attacker: { custom: { weapons: [W({ A: '4', S: 5, AP: -2, D: '2', skill: 3, keywords: ['Sustained Hits 2', 'Devastating Wounds'] })] }, models: 30 },
+      defender: { custom: { T: 4, Sv: 3, W: 2 }, models: 30 } },
+  };
+  for (const [name, body] of Object.entries(worst)) {
+    test(`worst case finishes in < 2s: ${name}`, () => {
+      const input = buildSimulation(body);
+      const t = performance.now();
+      const r = simulate(input);
+      const ms = performance.now() - t;
+      assert.ok(ms < 2000, `${name} took ${ms.toFixed(0)}ms`);
+      close(sum(r.killDistribution), 1, 1e-9);
+    });
+  }
+
+  test('API rejects abusive keyword values and oversized volleys with 400', async () => {
+    const server = createApp().listen(0);
+    await new Promise((r) => server.once('listening', r));
+    const base = `http://127.0.0.1:${server.address().port}/api/combat/simulate`;
+    const defender = { custom: { T: 4, Sv: 3, W: 2 }, models: 10 };
+    const cases = [
+      { attacker: { custom: { weapons: [W({ A: '1', D: '1', keywords: ['Melta 100000000'] })] }, models: 1, modifiers: { halfRange: true } }, defender },
+      { attacker: { custom: { weapons: [W({ A: '1', D: '1', keywords: ['Rapid Fire 1000000'] })] }, models: 1, modifiers: { halfRange: true } }, defender },
+      { attacker: { custom: { weapons: [W({ A: '1', D: '1', keywords: ['Sustained Hits 99'] })] }, models: 1 }, defender },
+      { attacker: { custom: { weapons: [W({ A: '20', D: '1', keywords: ['Rapid Fire 6', 'Blast'] })] }, models: 30, modifiers: { halfRange: true } }, defender: { ...defender, models: 30 } },
+      { attacker: { custom: { weapons: [W({ A: '20', D: '1', keywords: ['Sustained Hits 6'] })] }, models: 30 }, defender },
+      { attacker: { custom: { weapons: [W({ A: '1', D: '1' })] }, models: 1 }, defender, options: { trials: 100000 } },
+    ];
+    try {
+      for (const body of cases) {
+        const res = await fetch(base, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+        assert.equal(res.status, 400, JSON.stringify(body));
+        assert.equal(typeof (await res.json()).error, 'string');
+      }
+    } finally { await new Promise((r) => server.close(r)); }
   });
 });
