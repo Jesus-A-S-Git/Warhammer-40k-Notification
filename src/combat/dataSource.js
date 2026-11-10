@@ -11,6 +11,7 @@
 
 import { politeFetch, setHostLimit } from '../shared/httpClient.js';
 import { UNITS } from './data/units.js';
+import { keywordError } from './engine.js';
 
 export const REMOTE_HOST = 'wahapedia.ru';
 export const REMOTE_BASE = `https://${REMOTE_HOST}/wh40k10ed`;
@@ -90,10 +91,9 @@ export function parsePipeCsv(text) {
 const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
 const num = (s) => { const m = /-?\d+/.exec(String(s || '')); return m ? Number(m[0]) : null; };
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const KNOWN_KW = /^(assault|heavy|pistol|precision|hazardous|torrent|blast|lance|lethal hits|devastating wounds|twin-linked|ignores cover|indirect fire|psychic|one shot|extra attacks|sustained hits \S+|rapid fire \d+|melta \d+|anti-.+ [2-6]\+)$/i;
 
 function weaponKeywords(description) {
-  return stripHtml(description).split(',').map((s) => s.trim()).filter((s) => KNOWN_KW.test(s))
+  return stripHtml(description).split(',').map((s) => s.trim()).filter((s) => !keywordError(s)) // allowlist, bounded values
     .map((s) => s.replace(/\b\w/g, (c) => c.toUpperCase()));
 }
 

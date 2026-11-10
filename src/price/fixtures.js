@@ -78,7 +78,8 @@ export const DEMO_FAILING = new Set(['miniature-market']);
 /** Demo adapter for one retailer: returns its whole fixture catalogue. */
 export function demoAdapter(retailer) {
   return {
-    async search() {
+    async search(_query, { signal } = {}) {
+      if (signal?.aborted) throw signal.reason ?? new Error('Aborted');
       if (DEMO_FAILING.has(retailer.id)) throw new Error('Simulated outage (demo mode)');
       const host = HOST[retailer.id];
       const offers = [];

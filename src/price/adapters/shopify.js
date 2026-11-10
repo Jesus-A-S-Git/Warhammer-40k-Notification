@@ -33,10 +33,10 @@ export function parseShopifySuggest(json, { host, currency, priceInCents = false
 export function shopifyAdapter(retailer) {
   const cfg = retailer.adapter;
   return {
-    async search(query) {
+    async search(query, { signal } = {}) {
       const url = `https://${cfg.host}/search/suggest.json?q=${encodeURIComponent(query)}`
         + '&resources[type]=product&resources[limit]=10';
-      const json = await politeFetch(url, { as: 'json', ttlMs: SEARCH_TTL_MS });
+      const json = await politeFetch(url, { as: 'json', ttlMs: SEARCH_TTL_MS, signal });
       const fetchedAt = new Date().toISOString();
       return parseShopifySuggest(json, { host: cfg.host, currency: retailer.currency, priceInCents: cfg.priceInCents })
         .map((o) => ({ ...o, retailerId: retailer.id, fetchedAt }));

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { simulate, parseDice, RULES_VERSION } from './engine.js';
+import { simulate, parseDice, parseKeywords, keywordError, RULES_VERSION, MAX_TRIALS } from './engine.js';
 import { getUnits, dataSourceStatus } from './dataSource.js';
 import { findUnits } from './data/units.js';
 
@@ -48,11 +48,22 @@ function keywords(v, name) {
   if (!Array.isArray(v) || v.length > 20) bad(`${name} must be an array of at most 20 strings`);
   return v.map((k, i) => str(k, `${name}[${i}]`, 40));
 }
+/** Weapon keywords: strict allowlist with bounded numeric values. */
+function weaponKeywords(v, name) {
+  const list = keywords(v, name);
+  list.forEach((k, i) => { const e = keywordError(k); if (e) bad(`${name}[${i}]: ${e}`); });
+  return list;
+}
+
+// Max attacks per weapon entry, after Blast / Rapid Fire bonuses.
+const MAX_ATTACKS_PER_WEAPON = 600;
+// Max hits per volley: sum over weapons of attacks x (1 + max Sustained Hits).
+const MAX_HITS_PER_VOLLEY = 1200;
 
 function weaponSpec(w, name) {
   if (!isObj(w)) bad(`${name} must be an object`);
   onlyKeys(w, name, ['id', 'name', 'type', 'range', 'A', 'skill', 'S', 'AP', 'D', 'keywords']);
-  const kw = keywords(w.keywords, `${name}.keywords`);
+  const kw = weaponKeywords(w.keywords, `${name}.keywords`);
   const torrent = kw.some((k) => k.toLowerCase() === 'torrent');
   const AP = int(w.AP ?? 0, `${name}.AP`, -6, 0);
   return {
@@ -169,9 +180,6 @@ export function buildSimulation(body) {
     selected = armoury.map((w) => ({ ...w, models: aModels }));
   }
   if (!selected.length) bad('Select at least one attacker weapon');
-  for (const w of selected) {
-    if (parseDice(w.A).max * w.models > 600) bad(`Too many attacks for ${w.name}`);
-  }
 
   // ---- defender
   const dModels = int(d.models, 'defender.models', 1, 30);
@@ -197,20 +205,35 @@ export function buildSimulation(body) {
     };
   }
 
+  // ---- volley size (includes Blast, Rapid Fire and Sustained Hits bonuses)
+  const aMods = attackerMods(a.modifiers);
+  let volleyHits = 0;
+  for (const w of selected) {
+    const kw = parseKeywords(w.keywords); // seed/imported keywords are bounded too; throws on bad values
+    const ranged = w.type !== 'melee';
+    let bonus = kw.blast ? Math.floor(dModels / 5) : 0;
+    if (kw.rapidFire && aMods.halfRange && ranged) bonus += kw.rapidFire;
+    const maxAttacks = (parseDice(w.A).max + bonus) * w.models;
+    if (maxAttacks > MAX_ATTACKS_PER_WEAPON) bad(`Too many attacks for ${w.name} (up to ${maxAttacks}; limit ${MAX_ATTACKS_PER_WEAPON})`);
+    const sus = aMods.sustainedHits || kw.sustainedHits;
+    volleyHits += maxAttacks * (1 + (sus ? parseDice(sus).max : 0));
+  }
+  if (volleyHits > MAX_HITS_PER_VOLLEY) bad(`Volley too large (up to ${volleyHits} hits; limit ${MAX_HITS_PER_VOLLEY})`);
+
   // ---- options
   const o = body.options ?? {};
   if (!isObj(o)) bad('options must be an object');
   onlyKeys(o, 'options', ['method', 'trials', 'seed']);
   const options = {
     method: oneOf(o.method, 'options.method', ['auto', 'exact', 'monte-carlo'], 'auto'),
-    trials: optInt(o.trials, 'options.trials', 1000, 100_000) ?? 20_000,
+    trials: optInt(o.trials, 'options.trials', 1000, MAX_TRIALS) ?? MAX_TRIALS,
     seed: optInt(o.seed, 'options.seed', 0, 2 ** 31 - 1) ?? 40_000,
   };
 
   return {
     attacker: { name: aName, models: aModels, weapons: selected },
     defender,
-    attackerMods: attackerMods(a.modifiers),
+    attackerMods: aMods,
     defenderMods: defenderMods(d.modifiers),
     options,
   };

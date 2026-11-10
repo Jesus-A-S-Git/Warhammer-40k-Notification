@@ -6,13 +6,15 @@ import { checkOffer, flagOffer, compareOffers } from '../src/price/trust.js';
 import { registerRetailerLimits, adapterFor, RETAILER_LIMIT } from '../src/price/adapters/index.js';
 import { parseShopifySuggest } from '../src/price/adapters/shopify.js';
 import { parseJsonLdProducts } from '../src/price/adapters/jsonld.js';
-import { searchPrices } from '../src/price/search.js';
+import { searchPrices, statusForError } from '../src/price/search.js';
+import { createSearchLimiter, __resetSearchLimiter, SEARCH_RPM } from '../src/price/routes.js';
+import { PoliteFetchError } from '../src/shared/httpClient.js';
 import { matchScore, isMatch } from '../src/price/match.js';
 import { findMsrp } from '../src/price/msrp.js';
 import { convert } from '../src/price/currency.js';
 import { createApp } from '../src/server.js';
 
-beforeEach(() => { __reset(); registerRetailerLimits(); process.env.SKIP_ROBOTS = '1'; delete process.env.PRICE_DEMO; });
+beforeEach(() => { __reset(); __resetSearchLimiter(); registerRetailerLimits(); process.env.SKIP_ROBOTS = '1'; delete process.env.PRICE_DEMO; });
 after(() => __reset());
 
 const offer = (o = {}) => ({ retailerId: 'element-games', title: 'Space Marines: Intercessors', price: 36.9,
@@ -274,5 +276,93 @@ test('routes: validation, demo search, retailers list', async () => {
     const list = await (await get('/api/prices/retailers')).json();
     assert.equal(list.retailers.length, RETAILERS.length);
     assert.ok(list.retailers.every((x) => x.notes && x.tier && !('adapter' in x)));
+  });
+});
+
+// ---- reviewer fixes ---------------------------------------------------------
+test('timeout aborts the signal passed to the adapter', async () => {
+  let seen;
+  const retailers = RETAILERS.filter((r) => r.id === 'wayland-games');
+  const out = await searchPrices({ query: 'intercessors', retailers, timeoutMs: 30,
+    adapterFactory: () => ({ search: (_q, { signal }) => { seen = signal; return new Promise(() => {}); } }) });
+  assert.ok(seen instanceof AbortSignal);
+  assert.equal(seen.aborted, true);
+  assert.equal(out.retailers[0].status, 'error');
+  assert.match(out.retailers[0].error, /Timed out/);
+});
+
+test('real adapters pass the signal to every politeFetch call', async () => {
+  const signals = [];
+  __setFetch(async (u, init) => { signals.push(init?.signal); return new Response(
+    u.includes('goblingaming') ? JSON.stringify(SUGGEST) : '<a href="https://elementgames.co.uk/x/p1"></a><a href="https://elementgames.co.uk/x/p2"></a>',
+    { status: 200 }); });
+  const ctrl = new AbortController();
+  await adapterFor(getRetailer('goblin-gaming')).search('q1', { signal: ctrl.signal });
+  await adapterFor(getRetailer('element-games')).search('q1', { signal: ctrl.signal });
+  // goblin: 1 request; element: search page + exactly ONE product page
+  assert.equal(signals.length, 3);
+});
+
+test('html product-page fallback is limited (default 1, hard max 3)', async () => {
+  const links = Array.from({ length: 6 }, (_, i) => `<a href="https://www.waylandgames.co.uk/p/${i}">`).join('');
+  for (const [max, expected] of [[undefined, 1], [2, 2], [99, 3]]) {
+    __reset(); registerRetailerLimits();
+    let calls = 0;
+    __setFetch(async () => { calls++; return new Response(links, { status: 200 }); });
+    const r = { ...getRetailer('wayland-games') };
+    r.adapter = { ...r.adapter, productLinkPattern: 'href="(https://www\\.waylandgames\\.co\\.uk/p/\\d+)"', maxProductPages: max };
+    await adapterFor(r).search(`fallback-${max}`);
+    assert.equal(calls, 1 + expected, `maxProductPages=${max}`);
+  }
+});
+
+test('BUSY maps to error, ROBOTS maps to skipped', async () => {
+  assert.deepEqual(statusForError(new PoliteFetchError('x', { code: 'BUSY' })),
+    { status: 'error', error: 'Retailer busy, try again shortly' });
+  assert.equal(statusForError(new PoliteFetchError('x', { code: 'ROBOTS' })).status, 'skipped');
+  const retailers = RETAILERS.filter((r) => ['element-games', 'wayland-games', 'goblin-gaming'].includes(r.id));
+  const out = await searchPrices({ query: 'intercessors', retailers, adapterFactory: (r) => ({ async search() {
+    if (r.id === 'element-games') throw new PoliteFetchError('busy', { code: 'BUSY' });
+    if (r.id === 'wayland-games') throw new PoliteFetchError('robots', { code: 'ROBOTS' });
+    return [offer({ retailerId: 'goblin-gaming', url: 'https://www.goblingaming.co.uk/p' })];
+  } }) });
+  const by = Object.fromEntries(out.retailers.map((x) => [x.id, x]));
+  assert.equal(by['element-games'].status, 'error');
+  assert.match(by['element-games'].error, /busy/i);
+  assert.equal(by['wayland-games'].status, 'skipped');
+  assert.match(by['wayland-games'].reason, /robots\.txt/);
+  assert.equal(out.results.length, 1);
+});
+
+test('result URLs are normalised', async () => {
+  const out = await searchPrices({ query: 'intercessors', retailers: [getRetailer('element-games')],
+    adapterFactory: () => ({ async search() { return [offer({ url: 'https://ElementGames.co.uk:443/p/../p/intercessors' })]; } }) });
+  assert.equal(out.results[0].url, 'https://elementgames.co.uk/p/intercessors');
+});
+
+test('search limiter: token bucket, Retry-After, pruning and cap', () => {
+  let t = 0;
+  const l = createSearchLimiter({ rpm: 5, now: () => t, maxClients: 3 });
+  for (let i = 0; i < 5; i++) assert.ok(l.take('a').ok);
+  const denied = l.take('a');
+  assert.equal(denied.ok, false);
+  assert.ok(denied.retryAfterSec >= 1 && denied.retryAfterSec <= 12);
+  t += 12_000; assert.ok(l.take('a').ok);
+  l.take('b'); l.take('c'); l.take('d'); // exceeds cap -> prune/evict
+  assert.ok(l.clients.size <= 3);
+  t += 10 * 60_000; l.prune(t);
+  assert.equal(l.clients.size, 0); // fully refilled entries are dropped
+});
+
+test('route: 6th search in a minute from one IP gets 429 with Retry-After', async () => {
+  await withServer(async (base) => {
+    for (let i = 0; i < SEARCH_RPM; i++) {
+      assert.equal((await globalThis.fetch(`${base}/api/prices/search?q=intercessors&demo=1`)).status, 200);
+    }
+    const r = await globalThis.fetch(`${base}/api/prices/search?q=intercessors&demo=1`);
+    assert.equal(r.status, 429);
+    assert.ok(Number(r.headers.get('retry-after')) >= 1);
+    assert.ok((await r.json()).error);
+    assert.equal((await globalThis.fetch(`${base}/api/prices/retailers`)).status, 200);
   });
 });

@@ -40,6 +40,13 @@
 // "fish for crits"); Hazardous, Precision, Pistol, Assault, Indirect Fire and
 // similar keywords don't change the maths and are ignored.
 
+// Resource limits (DoS protection): see simulate().
+export const EXACT_WORK_BUDGET = 3e7;   // estimated state updates for the exact method
+export const MAX_TRIALS = 20_000;
+export const MIN_TRIALS = 2_000;
+export const MC_ROLL_BUDGET = 2.5e7;    // estimated dice rolled across all Monte Carlo trials
+export const MAX_VOLLEY_HITS = 5_000;   // max attacks x (1 + max Sustained Hits) per volley
+
 export const RULES_VERSION = '10th edition core rules (Devastating Wounds per 2024 Balance Dataslate)';
 
 const D6 = [1, 2, 3, 4, 5, 6];
@@ -100,25 +107,65 @@ function distPow(dist, n) {
 
 /* ------------------------------------------------------------- keywords */
 
-/** Turn datasheet keyword strings into a structured object. */
+/** Upper bound for every numeric keyword value (Sustained Hits, Rapid Fire, Melta). */
+export const MAX_KEYWORD_VALUE = 6;
+
+// Keywords that exist on datasheets but don't change this calculation.
+const NO_OP_KEYWORDS = new Set(['assault', 'pistol', 'precision', 'hazardous', 'indirect fire', 'psychic',
+  'one shot', 'extra attacks', 'ignores line of sight']);
+
+/**
+ * Check one keyword string against the allowlist.
+ * @returns {string|null} an error message, or null when the keyword is valid.
+ */
+export function keywordError(raw) {
+  const s = String(raw).trim().toLowerCase().replace(/\s+/g, ' ');
+  if (s.length > 40) return 'keyword too long';
+  if (NO_OP_KEYWORDS.has(s) || ['lethal hits', 'devastating wounds', 'twin-linked', 'twin linked', 'torrent', 'heavy',
+    'blast', 'lance', 'ignores cover'].includes(s)) return null;
+  let m;
+  if ((m = /^sustained hits (.+)$/.exec(s))) {
+    let d;
+    try { d = parseDice(m[1]); } catch { return `invalid "${raw}"`; }
+    return d.max <= MAX_KEYWORD_VALUE ? null : `"${raw}": Sustained Hits may be at most ${MAX_KEYWORD_VALUE}`;
+  }
+  if ((m = /^(rapid fire|melta) (\d{1,3})$/.exec(s))) {
+    return Number(m[2]) <= MAX_KEYWORD_VALUE ? null : `"${raw}": value may be at most ${MAX_KEYWORD_VALUE}`;
+  }
+  if (/^anti-[a-z][a-z -]{0,30} [2-6]\+$/.test(s)) return null;
+  return `unknown keyword "${raw}"`;
+}
+
+/**
+ * Turn datasheet keyword strings into a structured object.
+ * Numeric values are validated (defence in depth: the API rejects them first);
+ * out-of-range values throw rather than allocate huge distributions.
+ */
 export function parseKeywords(list = []) {
   const k = {
     lethalHits: false, sustainedHits: null, devastatingWounds: false, twinLinked: false,
     torrent: false, heavy: false, blast: false, rapidFire: 0, melta: 0, lance: false,
     ignoresCover: false, anti: [], other: [],
   };
+  const bounded = (v, raw) => {
+    if (!(v >= 0 && v <= MAX_KEYWORD_VALUE)) throw new Error(`Keyword value out of range: "${raw}"`);
+    return v;
+  };
   for (const raw of list) {
     const s = String(raw).trim().toLowerCase().replace(/\s+/g, ' ');
     let m;
     if (s === 'lethal hits') k.lethalHits = true;
-    else if ((m = /^sustained hits (\d?d[36](?:\+\d+)?|\d+)$/.exec(s))) k.sustainedHits = m[1].toUpperCase();
+    else if ((m = /^sustained hits (\d?d[36](?:\+\d+)?|\d+)$/.exec(s))) {
+      bounded(parseDice(m[1]).max, raw);
+      k.sustainedHits = m[1].toUpperCase();
+    }
     else if (s === 'devastating wounds') k.devastatingWounds = true;
     else if (s === 'twin-linked' || s === 'twin linked') k.twinLinked = true;
     else if (s === 'torrent') k.torrent = true;
     else if (s === 'heavy') k.heavy = true;
     else if (s === 'blast') k.blast = true;
-    else if ((m = /^rapid fire (\d+)$/.exec(s))) k.rapidFire = Number(m[1]);
-    else if ((m = /^melta (\d+)$/.exec(s))) k.melta = Number(m[1]);
+    else if ((m = /^rapid fire (\d+)$/.exec(s))) k.rapidFire = bounded(Number(m[1]), raw);
+    else if ((m = /^melta (\d+)$/.exec(s))) k.melta = bounded(Number(m[1]), raw);
     else if (s === 'lance') k.lance = true;
     else if (s === 'ignores cover') k.ignoresCover = true;
     else if ((m = /^anti-(.+?) ([2-6])\+$/.exec(s))) k.anti.push({ keyword: m[1], threshold: Number(m[2]) });
@@ -265,6 +312,7 @@ function plan(weapon, defender, am, dm) {
 
   // Sustained Hits.
   const sustained = sustainedExpr ? parseDice(sustainedExpr) : parseDice('0');
+  if (sustained.max > MAX_KEYWORD_VALUE) throw new Error(`Sustained Hits may be at most ${MAX_KEYWORD_VALUE}`);
 
   // Wound roll.
   const wTarget = woundTarget(weapon.S, defender.T);
@@ -391,6 +439,14 @@ function attackStep(dist, pl, space) {
   return out;
 }
 
+/** Hard cap on distinct defender states held at once by the exact method. */
+export const MAX_EXACT_STATES = 200_000;
+class ExactTooLarge extends Error {}
+function checkSize(map) {
+  if (map.size > MAX_EXACT_STATES) throw new ExactTooLarge(`state space exceeded ${MAX_EXACT_STATES}`);
+  return map;
+}
+
 function runExact(plans, defender) {
   const space = makeSpace(defender.models, defender.W);
   let stride = space.K;
@@ -406,12 +462,12 @@ function runExact(plans, defender) {
     addScaled(acc, cur, a[0] || 0);
     let remaining = 1 - (a[0] || 0);
     for (let n = 1; n < a.length && remaining > 1e-15; n++) {
-      cur = attackStep(cur, pl, space);
+      cur = checkSize(attackStep(cur, pl, space));
       if (cur.size === 1 && cur.has(0)) { addScaled(acc, cur, remaining); remaining = 0; break; }
       addScaled(acc, cur, a[n] || 0);
       remaining -= a[n] || 0;
     }
-    dist = acc;
+    dist = checkSize(acc);
   }
   // Devastating Wounds attacks are allocated after all other attacks.
   for (const pl of plans) {
@@ -531,7 +587,7 @@ function runMonteCarlo(plans, defender, ctx, trials, seed) {
         resolveWound(pl, c === 'crit' && pl.lethal);
         if (c === 'crit') {
           const x = sampleDist(pl.sustainedDist, rnd);
-          for (let j = 0; j < x; j++) { tot.hits++; resolveWound(pl, false); }
+          for (let j = 0; j < x && st.alive > 0; j++) { tot.hits++; resolveWound(pl, false); }
         }
       }
     }
@@ -565,11 +621,17 @@ export function simulate(input) {
 
   const plans = attacker.weapons.map((w) => plan({ skill: 3, AP: 0, type: 'ranged', ...w }, defender, attackerMods, defenderMods));
 
+  let volleyHits = 0;
+  for (const pl of plans) volleyHits += pl.maxAttacks * (1 + pl.maxSustained);
+  if (volleyHits > MAX_VOLLEY_HITS) throw new Error(`Volley too large (up to ${volleyHits} hits; limit ${MAX_VOLLEY_HITS})`);
+
+  // The same work budget applies whether exact was requested or chosen automatically.
   const { work, states } = estimateWork(plans, defender);
-  const keySpaceOk = states < 2 ** 52;
-  let method = options.method || 'auto';
-  if (method === 'auto') method = work <= 3e7 && keySpaceOk ? 'exact' : 'monte-carlo';
-  if (method === 'exact' && !keySpaceOk) method = 'monte-carlo';
+  const exactAllowed = work <= EXACT_WORK_BUDGET && states < 2 ** 52;
+  const requested = options.method || 'auto';
+  let method = requested === 'monte-carlo' || !exactAllowed ? 'monte-carlo' : 'exact';
+  let fallbackReason = null;
+  if (requested === 'exact' && !exactAllowed) fallbackReason = 'exact calculation would exceed the work budget';
 
   const exp = {
     attacks: 0, hits: 0, wounds: 0, devastatingWounds: 0, unsavedWounds: 0, damage: 0,
@@ -582,9 +644,24 @@ export function simulate(input) {
 
   let kills, inflicted, trials = null, seed = null;
   if (method === 'exact') {
-    ({ kills, inflicted } = runExact(plans, defender));
-  } else {
-    trials = Math.max(100, Math.min(200_000, Math.floor(options.trials || 20_000)));
+    try {
+      ({ kills, inflicted } = runExact(plans, defender));
+    } catch (err) {
+      if (!(err instanceof ExactTooLarge)) throw err;
+      method = 'monte-carlo';
+      fallbackReason = `exact calculation stopped: ${err.message}`;
+    }
+  }
+  if (method === 'monte-carlo') {
+    const requestedTrials = Math.max(100, Math.min(MAX_TRIALS, Math.floor(options.trials || MAX_TRIALS)));
+    // Budget by estimated dice rolled so the worst case stays around a second.
+    let rollsPerTrial = 1;
+    for (const pl of plans) {
+      const b = pl.breakdown;
+      rollsPerTrial += pl.models + 2 * b.attacks + b.hits * (4 + (defender.fnp ? pl.dmg.meanBeforeFnp : 0));
+    }
+    trials = Math.min(requestedTrials, Math.max(MIN_TRIALS, Math.floor(MC_ROLL_BUDGET / rollsPerTrial)));
+    if (trials < requestedTrials) fallbackReason = [fallbackReason, `trials reduced from ${requestedTrials} to ${trials} to bound run time`].filter(Boolean).join('; ');
     seed = Number.isFinite(options.seed) ? options.seed : 40_000;
     const ctx = { damageReduction: defenderMods.damageReduction || 0 };
     for (const pl of plans) {
@@ -612,7 +689,7 @@ export function simulate(input) {
 
   const modelsKilled = kills.reduce((s, p, k) => s + p * k, 0);
   return {
-    method, trials, seed,
+    method, trials, seed, fallbackReason,
     rulesVersion: RULES_VERSION,
     attacker: { name: attacker.name || 'Attacker', models: attacker.models ?? null },
     defender: { name: defender.name || 'Defender', models: defender.models, T: defender.T, Sv: defender.Sv,

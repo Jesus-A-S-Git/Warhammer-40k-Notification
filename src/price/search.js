@@ -16,12 +16,34 @@ export const DISCLAIMER =
 
 const DEFAULT_TIMEOUT_MS = 25_000;
 
-function withTimeout(p, ms) {
+/**
+ * Run `fn(signal)` with a deadline. On timeout the AbortController fires, so
+ * politeFetch drops this retailer's still-queued requests instead of spending
+ * the host's rate budget on a search nobody is waiting for.
+ */
+function withTimeout(fn, ms) {
+  const ctrl = new AbortController();
   let t;
   return Promise.race([
-    p,
-    new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`Timed out after ${ms} ms`)), ms); }),
+    Promise.resolve().then(() => fn(ctrl.signal)),
+    new Promise((_, rej) => {
+      t = setTimeout(() => {
+        const err = new Error(`Timed out after ${ms} ms`); err.code = 'TIMEOUT';
+        ctrl.abort(err); rej(err);
+      }, ms);
+    }),
   ]).finally(() => clearTimeout(t));
+}
+
+/** Map an adapter failure to a retailer status entry. */
+export function statusForError(err) {
+  switch (err?.code) {
+    case 'BUSY': return { status: 'error', error: 'Retailer busy, try again shortly' };
+    case 'ROBOTS': return { status: 'skipped', reason: 'Retailer’s robots.txt disallows automated search' };
+    case 'RATE_LIMITED': return { status: 'error', error: 'Retailer is rate limiting us, try again later' };
+    case 'REDIRECT': return { status: 'error', error: 'Retailer redirected to another site; result discarded' };
+    default: return { status: 'error', error: safeError(err) };
+  }
 }
 
 function safeError(err) {
@@ -56,7 +78,7 @@ export async function searchPrices({
       return;
     }
     try {
-      const offers = await withTimeout(Promise.resolve().then(() => factory(r).search(query)), timeoutMs);
+      const offers = await withTimeout((signal) => factory(r).search(query, { signal }), timeoutMs);
       if (!Array.isArray(offers)) throw new Error('Adapter returned no list');
       let count = 0;
       for (const o of offers) {
@@ -66,7 +88,7 @@ export async function searchPrices({
       }
       statuses.push({ ...base, status: 'ok', received: count });
     } catch (err) {
-      statuses.push({ ...base, status: 'error', error: safeError(err) });
+      statuses.push({ ...base, ...statusForError(err) });
     }
   }));
   if (demo) for (const o of UNTRUSTED_FIXTURES) candidates.push({ ...o, __source: null });
@@ -85,15 +107,16 @@ export async function searchPrices({
     const check = checkOffer(offer);
     if (!check.ok) { drop(check.reason); continue; }
     if (!isMatch(query, offer.title)) { drop('no-match'); continue; }
-    if (seen.has(offer.url)) { drop('duplicate'); continue; }
-    seen.add(offer.url);
+    const href = new URL(offer.url).href;
+    if (seen.has(href)) { drop('duplicate'); continue; }
+    seen.add(href);
     const r = byId.get(offer.retailerId);
     if (region !== 'All' && r.region !== region) { drop('region'); continue; }
     const { flags, msrp, savingPct } = flagOffer(offer, queryMsrp);
     const target = currency === 'native' ? null : currency;
     results.push({
       retailerId: r.id, retailerName: r.name, tier: r.tier, region: r.region,
-      title: offer.title, url: offer.url, imageUrl: offer.imageUrl,
+      title: offer.title, url: new URL(offer.url).href, imageUrl: offer.imageUrl,
       price: Math.round(offer.price * 100) / 100, currency: offer.currency,
       convertedPrice: target ? convert(offer.price, offer.currency, target) : null,
       convertedCurrency: target,

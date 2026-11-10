@@ -48,7 +48,8 @@ export const RETAILERS = [
     notes: 'Long-running UK discount stockist (since ~2010) with a physical store in Stockport.',
     shippingNote: 'Free UK shipping over a threshold; international shipping available.',
     adapter: { type: 'html', searchUrl: 'https://elementgames.co.uk/search?search={q}',
-      productLinkPattern: 'href="(https://elementgames\\.co\\.uk/[^"]+/[^"]+)"' },
+      productLinkPattern: 'href="(https://elementgames\\.co\\.uk/[^"]+/[^"]+)"',
+      maxProductPages: 1 }, // cold cache: robots + search + 1 page fits the 25 s deadline at 6 rpm
   },
   {
     id: 'wayland-games',
