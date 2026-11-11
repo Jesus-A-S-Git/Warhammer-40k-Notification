@@ -23,6 +23,12 @@ const PRODUCT_TOKEN = 'Wh40kToolkit';
 
 // Candidate US stores mentioned by the community, probed to learn how their
 // sites work before deciding whether to add them. Search URLs are best guesses.
+// Real search URLs found by reading each store's own search form (probe run 2).
+const FOUND_SEARCH = {
+  'miniature-market': 'https://www.miniaturemarket.com/search?search={q}',
+  'discount-games-inc': 'https://www.discountgamesinc.com/search/?q={q}',
+};
+
 const CANDIDATES = [
   { id: 'cand-atomic-empire', name: 'Atomic Empire (candidate)', domains: ['www.atomicempire.com'],
     adapter: { type: 'html', searchUrl: 'https://www.atomicempire.com/Store/Search?q={q}' } },
@@ -119,7 +125,7 @@ for (const r of [...RETAILERS.filter((x) => x.region === 'US' || x.id === 'eleme
     row.discoveredSearch = discoverSearch(home.body, new URL(home.finalUrl ?? origin).origin);
     row.homePlatform = markers(home.body).platform;
   }
-  const template = row.discoveredSearch ?? configured;
+  const template = FOUND_SEARCH[r.id] ?? row.discoveredSearch ?? configured;
   const searchUrl = template.replace('{q}', encodeURIComponent(query));
   const u = new URL(searchUrl);
   row.searchUrl = searchUrl;
@@ -130,6 +136,22 @@ for (const r of [...RETAILERS.filter((x) => x.region === 'US' || x.id === 'eleme
     row.redirectHops = page.hops;
     row.sampleLinks = [...new Set([...String(page.body ?? '').matchAll(/href="([^"]*\/(?:products?|p|item|catalog)\/[^"]+)"/gi)].map((x) => x[1]))].slice(0, 3);
     row.pricesSeen = (String(page.body ?? '').match(/\$\s?\d{1,3}\.\d{2}/g) ?? []).slice(0, 5);
+    // Markup samples around the first results, to write a page reader for stores without JSON-LD.
+    if (process.env.PROBE_EXCERPTS === '1' && page.body && FOUND_SEARCH[r.id]) {
+      const body = String(page.body).replace(/\s+/g, ' ');
+      const word = query.toLowerCase().slice(0, 8);
+      const out = []; let from = body.indexOf('<body');
+      while (out.length < 2 && from >= 0) {
+        const i = body.toLowerCase().indexOf(word, from);
+        if (i < 0) break;
+        const tagStart = body.lastIndexOf('<a ', i);
+        if (tagStart >= 0 && i - tagStart < 600 && /\$\d/.test(body.slice(i, i + 2500))) {
+          out.push(body.slice(Math.max(0, tagStart - 400), tagStart + 1800));
+          from = tagStart + 2500;
+        } else from = i + word.length;
+      }
+      row.excerpts = out;
+    }
     Object.assign(row, { searchStatus: page.status || page.error, searchMs: page.ms, redirectTo: page.location,
       contentType: page.type, server: page.server, cloudflare: page.cfRay, ...markers(page.body) });
     try { row.jsonLdProducts = page.body ? parseJsonLdProducts(page.body, searchUrl).length : 0; } catch { row.jsonLdProducts = 'parse error'; }

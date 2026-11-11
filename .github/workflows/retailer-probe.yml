@@ -24,4 +24,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node scripts/probe-retailers.js "${{ inputs.query || 'intercessors' }}"
+      - env:
+          PROBE_EXCERPTS: '1'
+        run: node scripts/probe-retailers.js "${{ inputs.query || 'intercessors' }}"
