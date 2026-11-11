@@ -1,5 +1,5 @@
 # Diagnostics only: shows what each retailer returns to the price fetcher when
-# called from GitHub's servers. Makes ≤ 3 polite requests per store; deploys nothing.
+# called from GitHub's servers. Makes a handful of polite requests per store; deploys nothing.
 name: Retailer probe
 
 on:
