@@ -67,7 +67,7 @@ export async function searchPrices({
       statuses.push({ ...base, status: 'skipped', reason: `Not in region ${region}` }); return;
     }
     if (!demo && !adapterFactory && r.adapter?.live === false) {
-      statuses.push({ ...base, status: 'skipped', reason: 'Live lookups disabled for this store (see notes)' });
+      statuses.push({ ...base, status: 'skipped', reason: r.adapter.liveDisabledReason ?? 'Live lookups disabled for this store (see notes)' });
       return;
     }
     try {

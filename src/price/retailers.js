@@ -85,7 +85,8 @@ export const RETAILERS = [
     region: 'US', country: 'US', currency: 'USD', tier: 'authorized',
     notes: 'Major US hobby retailer (since ~2007) based in Missouri.',
     shippingNote: 'US shipping; free over a threshold within the contiguous US.',
-    adapter: { type: 'html', searchUrl: 'https://www.miniaturemarket.com/searchresults?q={q}' },
+    // Real search form found by the probe; old /searchresults URL returned 404.
+    adapter: { type: 'html', searchUrl: 'https://www.miniaturemarket.com/search?search={q}' },
   },
   {
     id: 'noble-knight',
@@ -94,7 +95,10 @@ export const RETAILERS = [
     region: 'US', country: 'US', currency: 'USD', tier: 'authorized',
     notes: 'US retailer since the 1990s (Wisconsin); sells new and clearly-labelled used/OOP items.',
     shippingNote: 'US and international shipping.',
-    adapter: { type: 'html', searchUrl: 'https://www.nobleknight.com/search?q={q}' },
+    // Probe (Nov 2026): robots.txt disallows /Search for automated clients, so we
+    // don't search it. Still listed so users can see it was considered.
+    adapter: { type: 'html', live: false, liveDisabledReason: 'robots.txt disallows automated search',
+      searchUrl: 'https://www.nobleknight.com/Search?text={q}' },
   },
   {
     id: 'discount-games-inc',
@@ -103,7 +107,21 @@ export const RETAILERS = [
     region: 'US', country: 'US', currency: 'USD', tier: 'authorized',
     notes: 'Store run by Frontline Gaming, a long-standing US tournament organiser and stockist.',
     shippingNote: 'US shipping.',
-    adapter: { type: 'shopify', host: 'www.discountgamesinc.com' },
+    // Not a Shopify store (suggest.json redirects). Search form found by the probe.
+    adapter: { type: 'html', searchUrl: 'https://www.discountgamesinc.com/search/?q={q}' },
+  },
+  {
+    id: 'wargame-portal',
+    name: 'Wargame Portal',
+    domains: ['wargameportal.com', 'www.wargameportal.com'],
+    region: 'US', country: 'US', currency: 'USD', tier: 'authorized',
+    notes: 'North American online stockist pricing GW kits at the maximum advertised discount '
+      + '(typically 15% off MSRP). Real, established store, but customer reviews are mixed '
+      + '(Trustpilot ≈2.9/5, mostly about slow shipping).',
+    shippingNote: 'US shipping; reviews report slower dispatch on discounted orders.',
+    caution: 'Mixed reviews on shipping speed',
+    // Shopify storefront; probe (Nov 2026) confirmed /search/suggest.json returns products.
+    adapter: { type: 'shopify', host: 'wargameportal.com' },
   },
   {
     id: 'fantasywelt',
@@ -127,5 +145,7 @@ export function publicRetailer(r) {
     id: r.id, name: r.name, domains: r.domains, region: r.region, country: r.country,
     currency: r.currency, tier: r.tier, notes: r.notes, shippingNote: r.shippingNote,
     liveLookups: r.adapter?.live !== false,
+    liveDisabledReason: r.adapter?.liveDisabledReason ?? null,
+    caution: r.caution ?? null,
   };
 }
