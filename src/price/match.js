@@ -17,6 +17,7 @@ const NON_KIT = ['paint', 'contrast', 'shade', 'citadel colour', 'spray', 'prime
 const QUALIFIERS = ['chaos'];
 
 export const MATCH_THRESHOLD = 0.7;
+export const TITLE_MAX_TYPOS = 1;
 
 function hasPhrase(norm, phrase) {
   return new RegExp(`(^| )${phrase}s?( |$)`).test(norm);
@@ -37,7 +38,9 @@ export function matchScore(query, title) {
   for (const w of QUALIFIERS) {
     if (hasPhrase(nt, w) && !hasPhrase(nqx, w)) return 0;
   }
-  const d = matchDetail(query, title);
+  // One typo per word at most against a store's title (see matchDetail); bigger
+  // misspellings are handled earlier by correcting the query ("Did you mean").
+  const d = matchDetail(query, title, { maxTypos: TITLE_MAX_TYPOS });
   // Every distinctive word must be found (approximately): "combat patrol space
   // marines" is not "Boarding Patrol: Space Marines". Long queries may miss one.
   if (d.missing > (d.distinctive >= 5 ? 1 : 0)) return Math.min(d.score, MATCH_THRESHOLD - 0.01) * (d.missing > 1 ? 0.5 : 1);
