@@ -86,7 +86,9 @@ export const RETAILERS = [
     notes: 'Major US hobby retailer (since ~2007) based in Missouri.',
     shippingNote: 'US shipping; free over a threshold within the contiguous US.',
     // Real search form found by the probe; old /searchresults URL returned 404.
-    adapter: { type: 'html', searchUrl: 'https://www.miniaturemarket.com/search?search={q}' },
+    // No JSON-LD on results, so product cards are read directly (selectors from probe run 3).
+    adapter: { type: 'listing', searchUrl: 'https://www.miniaturemarket.com/search?search={q}',
+      cardMarker: 'class="product-info"', linkClass: 'product-name', priceClass: 'product-price' },
   },
   {
     id: 'noble-knight',
@@ -107,8 +109,10 @@ export const RETAILERS = [
     region: 'US', country: 'US', currency: 'USD', tier: 'authorized',
     notes: 'Store run by Frontline Gaming, a long-standing US tournament organiser and stockist.',
     shippingNote: 'US shipping.',
-    // Not a Shopify store (suggest.json redirects). Search form found by the probe.
-    adapter: { type: 'html', searchUrl: 'https://www.discountgamesinc.com/search/?q={q}' },
+    // Lightspeed store, not Shopify (suggest.json redirects). Search form found by the
+    // probe; results pages have no JSON-LD, so product cards are read directly.
+    adapter: { type: 'listing', searchUrl: 'https://www.discountgamesinc.com/search/?q={q}',
+      cardMarker: 'class="product-info"', linkClass: 'product-title', priceClass: 'price' },
   },
   {
     id: 'wargame-portal',

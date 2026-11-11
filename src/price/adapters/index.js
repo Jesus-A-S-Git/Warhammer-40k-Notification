@@ -2,6 +2,7 @@ import { setHostLimit } from '../../shared/httpClient.js';
 import { RETAILERS } from '../retailers.js';
 import { shopifyAdapter } from './shopify.js';
 import { htmlAdapter } from './html.js';
+import { listingAdapter } from './listing.js';
 
 // Conservative per-host budget: none of these retailers publish an API rate
 // limit, so we stay well under the project-wide ≤10 req/min ceiling.
@@ -20,7 +21,7 @@ export function registerRetailerLimits(set = setHostLimit) {
 }
 registerRetailerLimits();
 
-const FACTORIES = { shopify: shopifyAdapter, html: htmlAdapter };
+const FACTORIES = { shopify: shopifyAdapter, html: htmlAdapter, listing: listingAdapter };
 
 export function adapterFor(retailer) {
   const f = FACTORIES[retailer.adapter?.type];
