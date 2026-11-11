@@ -109,6 +109,9 @@ export const RETAILERS = [
     region: 'US', country: 'US', currency: 'USD', tier: 'authorized',
     notes: 'Store run by Frontline Gaming, a long-standing US tournament organiser and stockist.',
     shippingNote: 'US shipping.',
+    // Its site protection answered HTTP 403 after ~40 searches at 6/min during the
+    // first full refresh (Nov 2026), so this store gets a slower budget of its own.
+    rateLimit: { requestsPerMinute: 2 },
     // Lightspeed store, not Shopify (suggest.json redirects). Search form found by the
     // probe; results pages have no JSON-LD, so product cards are read directly.
     adapter: { type: 'listing', searchUrl: 'https://www.discountgamesinc.com/search/?q={q}',

@@ -13,7 +13,7 @@ export function registerRetailerLimits(set = setHostLimit) {
   const hosts = [];
   for (const r of RETAILERS) {
     for (const host of new Set([...r.domains, ...(r.adapter?.host ? [r.adapter.host] : [])])) {
-      set(host, { ...RETAILER_LIMIT });
+      set(host, { ...RETAILER_LIMIT, ...(r.rateLimit ?? {}) });
       hosts.push(host);
     }
   }

@@ -116,3 +116,13 @@ test('very long Retry-After fails fast instead of being shortened', async () => 
   setHostLimit('g.example', { requestsPerMinute: 6000, burst: 10 });
   await assert.rejects(politeFetch('https://g.example/x'), (e) => e.code === 'RATE_LIMITED');
 });
+
+test('circuit breaker: a 403 pauses the host, later calls send nothing', async () => {
+  let calls = 0;
+  __setFetch(async () => { calls++; return new Response('', { status: 403 }); });
+  setHostLimit('h.example', { requestsPerMinute: 6000, burst: 10 });
+  await assert.rejects(politeFetch('https://h.example/a'), (e) => e.code === 'REFUSED');
+  await assert.rejects(politeFetch('https://h.example/b'), (e) => e.code === 'PAUSED');
+  await assert.rejects(politeFetch('https://h.example/c'), (e) => e.code === 'PAUSED');
+  assert.equal(calls, 1, 'only the first request reached the store');
+});

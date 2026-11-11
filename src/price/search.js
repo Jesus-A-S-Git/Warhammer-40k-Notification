@@ -34,6 +34,8 @@ export function statusForError(err) {
     case 'BUSY': return { status: 'error', error: 'Retailer busy, try again shortly' };
     case 'ROBOTS': return { status: 'skipped', reason: 'Retailer’s robots.txt disallows automated search' };
     case 'RATE_LIMITED': return { status: 'error', error: 'Retailer is rate limiting us, try again later' };
+    case 'REFUSED':
+    case 'PAUSED': return { status: 'error', error: 'Store refused automated requests (HTTP 403); paused for an hour' };
     case 'REDIRECT': return { status: 'error', error: 'Retailer redirected to another site; result discarded' };
     default: return { status: 'error', error: safeError(err) };
   }
@@ -71,7 +73,11 @@ export async function searchPrices({
       return;
     }
     try {
-      const offers = await withTimeout((signal) => factory(r).search(query, { signal }), timeoutMs);
+      // A slow per-store rate limit means a request can wait its turn longer than the
+      // default timeout; allow one full interval plus the normal budget.
+      const rpm = r.rateLimit?.requestsPerMinute;
+      const limitMs = rpm ? Math.max(timeoutMs, Math.ceil(60_000 / rpm) + timeoutMs) : timeoutMs;
+      const offers = await withTimeout((signal) => factory(r).search(query, { signal }), limitMs);
       if (!Array.isArray(offers)) throw new Error('Adapter returned no list');
       let count = 0;
       for (const o of offers) {
