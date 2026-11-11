@@ -156,7 +156,7 @@ export function typoBudget(len) {
  *   exact 1 · prefix ("interc" -> intercessor) 0.8-0.95 · typo 0.9 per edit
  *   less · typo'd prefix ("intersess") 0.75.
  */
-function tokenSim(q, t) {
+function tokenSim(q, t, maxTypos = Infinity) {
   if (q === t) return 1;
   const ql = q.length; const tl = t.length;
   if (/^\d+$/.test(q) || /^\d+$/.test(t)) return 0;
@@ -164,7 +164,7 @@ function tokenSim(q, t) {
     // Short prefixes of long words are weak evidence.
     return ql >= 4 || ql / tl >= 0.5 ? 0.8 + 0.15 * (ql / tl) : 0.6;
   }
-  const budget = typoBudget(Math.min(ql, tl));
+  const budget = Math.min(typoBudget(Math.min(ql, tl)), maxTypos);
   if (budget && Math.abs(ql - tl) <= budget) {
     // First letters rarely get mistyped; requiring a match keeps precision.
     // Also forgive a dropped silent first letter: nights→knights, nome→gnome, raith→wraith.
@@ -175,7 +175,7 @@ function tokenSim(q, t) {
     }
   }
   // Typo while still typing: compare against the word's prefix, one edit fewer allowed.
-  const pb = typoBudget(ql) - 1;
+  const pb = Math.min(typoBudget(ql), maxTypos) - 1;
   if (pb > 0 && tl > ql && q[0] === t[0]) {
     const d = Math.min(distance(q, t.slice(0, ql), pb), distance(q, t.slice(0, ql + 1), pb));
     if (d <= pb) return 0.75;
@@ -218,8 +218,10 @@ function queryInfo(query) {
  *   score     weighted share of the query found in the text (0..1)
  *   coverage  share of the text's words the query accounted for (ranking tie-break)
  *   missing   distinctive (non-filler) query words with no match at all
+ * `maxTypos` caps edits per word. Price matching uses 1: store titles are spelled
+ * correctly, so 2 edits only ever reach different products ("intercessors" ≠ "interceptor").
  */
-export function matchDetail(query, text) {
+export function matchDetail(query, text, { maxTypos = Infinity } = {}) {
   const q = typeof query === 'string' ? queryInfo(query) : query;
   if (!q.total) return { score: 0, coverage: 0, missing: 0, distinctive: 0 };
   const t = textInfo(String(text ?? ''));
@@ -233,7 +235,7 @@ export function matchDetail(query, text) {
       for (const qt of alt) {
         let b = 0; let bt = null;
         for (const tt of t.all) {
-          const s = tokenSim(qt, tt);
+          const s = tokenSim(qt, tt, maxTypos);
           if (s > b) { b = s; bt = tt; if (s === 1) break; }
         }
         sum += b; if (bt) u.push(bt); else if (weightOf(qt) >= 1) zeros++;

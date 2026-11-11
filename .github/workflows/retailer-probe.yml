@@ -10,7 +10,7 @@ on:
         default: 'intercessors'
   push:
     branches: ['claude/**']
-    paths: ['scripts/probe-retailers.js', 'scripts/check-live-search.js', '.github/workflows/retailer-probe.yml', 'src/price/retailers.js', 'src/price/adapters/**']
+    paths: ['scripts/probe-retailers.js', 'scripts/check-live-search.js', '.github/workflows/retailer-probe.yml', 'src/price/**', 'src/search/**']
 
 permissions:
   contents: read

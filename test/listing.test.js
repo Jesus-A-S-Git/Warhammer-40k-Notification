@@ -38,3 +38,29 @@ test('a redesigned page yields no offers rather than guesses', () => {
   assert.deepEqual(parseListing('<div class="product-info"><a href="/x">Thing</a> £5</div>', cfg('miniature-market'), 'https://www.miniaturemarket.com/'), []);
   assert.equal(decodeEntities('A &amp; B &#39;x&#39; &#x2013;'), "A & B 'x' –");
 });
+
+test('live regression: "intercessors" must not match Interceptor cards or tanks', async () => {
+  const { isMatch } = await import('../src/price/match.js');
+  for (const t of ['Interceptor Mechan - Edge of Eternities (Near Mint)',
+    'Elite Interceptor // Rejoinder - Secrets of Strixhaven (Near Mint)',
+    'Flames of War WW2: US - T55 Interceptor Tank Destroyer Platoon']) {
+    assert.equal(isMatch('intercessors', t), false, t);
+  }
+  assert.equal(isMatch('intercessors', 'Space Marines - Intercessor Squad'), true);
+  assert.equal(isMatch('intersessors', 'Space Marines - Intercessor Squad'), true, 'one typo still forgiven');
+  assert.equal(isMatch('necron warriers', 'Necrons: Necron Warriors'), true);
+});
+
+test('best price prefers the kit searched for over a cheaper, different kit', async () => {
+  const { rankOffers } = await import('../src/price/rank.js');
+  const mk = (retailerId, host, title, price) => ({ retailerId, __source: retailerId, title, price, currency: 'USD',
+    inStock: true, url: `https://${host}/${encodeURIComponent(title)}` });
+  const out = rankOffers({ query: 'intercessors', region: 'US', currency: 'USD', candidates: [
+    mk('discount-games-inc', 'www.discountgamesinc.com', 'Space Marines - Jump Pack Intercessors', 52.70),
+    mk('wargame-portal', 'wargameportal.com', 'Intercessor Squad', 57.37),
+    mk('discount-games-inc', 'www.discountgamesinc.com', 'Space Marines - Intercessor Squad', 57.38),
+  ] });
+  assert.equal(out.results[0].price, 52.70, 'cheaper related kit still listed first');
+  assert.equal(out.best.title, 'Intercessor Squad');
+  assert.equal(out.best.price, 57.37);
+});

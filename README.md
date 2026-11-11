@@ -56,6 +56,21 @@ npm run build:static
 npm run preview:static     # http://localhost:4000/Warhammer-40k-Notification/
 ```
 
+## US retailers (checked from GitHub's servers, Nov 2026)
+
+| Store | Status | How it's read |
+|---|---|---|
+| Miniature Market | ✅ live | search results page (`listing` adapter) |
+| Discount Games Inc (Frontline Gaming) | ✅ live | search results page (`listing` adapter) |
+| Wargame Portal | ✅ live (mixed shipping reviews, shown on the site) | Shopify `suggest.json` |
+| Noble Knight Games | ⏭ skipped: robots.txt disallows automated search | n/a |
+| GameNerdz | ✖ not added: robots.txt disallows automated search | n/a |
+| Atomic Empire | ✖ not added: search loads via JavaScript, no readable results page | n/a |
+
+Re-check any time: Actions → **Retailer probe** → Run workflow. It makes a handful of polite
+requests per store, reports robots.txt rules, status codes, bot challenges and whether prices
+are readable, then runs one real end-to-end search. It deploys nothing.
+
 ## Rate limiting (outbound API/scrape budget)
 
 Every outbound request goes through `src/shared/httpClient.js` → `politeFetch()`:

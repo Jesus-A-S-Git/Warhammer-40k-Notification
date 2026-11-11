@@ -3,10 +3,10 @@
 // which re-runs every trust check client-side on the published snapshot.
 import { RETAILERS, publicRetailer } from './retailers.js';
 import { checkOffer, flagOffer, compareOffers, SUSPICIOUS_RATIO } from './trust.js';
-import { isMatch, matchScore } from './match.js';
+import { isMatch, matchScore, TITLE_MAX_TYPOS } from './match.js';
 import { findMsrp, msrpIn, MSRP_TABLE } from './msrp.js';
 import { WATCHLIST, POPULAR } from './watchlist.js';
-import { suggest, normalize } from '../search/fuzzy.js';
+import { suggest, normalize, matchDetail } from '../search/fuzzy.js';
 import { convert, RATES_AS_OF, RATES_PER_GBP } from './currency.js';
 import { HOME } from './location.js';
 
@@ -92,6 +92,9 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
       inStock: typeof offer.inStock === 'boolean' ? offer.inStock : null,
       msrp, savingPct, flags,
       relevance: Math.round(matchScore(query, offer.title) * 100) / 100,
+      // Share of the title the query accounts for: "Intercessor Squad" is a closer
+      // match for "intercessors" than "Jump Pack Intercessors" (a different kit).
+      closeness: Math.round(matchDetail(query, offer.title, { maxTypos: TITLE_MAX_TYPOS }).coverage * 100) / 100,
       fetchedAt: offer.fetchedAt ?? new Date().toISOString(),
       domestic,
       // Estimated total in the home currency incl. destination sales tax (domestic
@@ -103,7 +106,10 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
   results.sort(compareOffers);
   // Best = cheapest trusted in-stock offer, preferring retailers that ship
   // domestically to the home location (no import fees); else any region.
-  const eligible = (o) => o.inStock === true && !o.flags.includes('suspicious');
+  // Best = cheapest among the closest title matches, so a cheaper but different
+  // kit doesn't win; still prefers in-stock, non-suspicious, domestic offers.
+  const top = Math.max(0, ...results.map((o) => o.closeness));
+  const eligible = (o) => o.inStock === true && !o.flags.includes('suspicious') && o.closeness >= top - 0.15;
   const best = results.find((o) => eligible(o) && o.domestic) ?? results.find(eligible) ?? null;
 
   const order = new Map(retailers.map((r, i) => [r.id, i]));
