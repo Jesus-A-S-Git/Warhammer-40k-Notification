@@ -27,6 +27,10 @@ const hostLimits = new Map();    // canonical host -> limit config
 const cache = new TTLCache({ maxEntries: 2000 });
 const inFlight = new Map();      // cacheKey -> Promise
 const robotsCache = new TTLCache({ maxEntries: 500 });
+// Circuit breaker: a host that answers 403 (or keeps rate-limiting us) is paused,
+// so we stop sending it requests instead of hammering a store that said no.
+const pausedUntil = new Map(); // canonical host -> epoch ms
+export const PAUSE_AFTER_REFUSAL_MS = 60 * 60_000;
 
 let fetchImpl = (...a) => globalThis.fetch(...a);
 
@@ -34,7 +38,7 @@ let fetchImpl = (...a) => globalThis.fetch(...a);
 export function __setFetch(fn) { fetchImpl = fn; }
 /** Clears limiter state and caches. Registered host limits are kept unless `limits` is true. */
 export function __reset({ limits = false } = {}) {
-  limiters.clear(); cache.clear(); inFlight.clear(); robotsCache.clear();
+  limiters.clear(); cache.clear(); inFlight.clear(); robotsCache.clear(); pausedUntil.clear();
   if (limits) hostLimits.clear();
   fetchImpl = (...a) => globalThis.fetch(...a);
 }
@@ -167,6 +171,9 @@ export async function politeFetch(url, opts = {}) {
   const key = `${as}:${start.href}`;
 
   const hit = cache.get(key);
+  if (hit === undefined && (pausedUntil.get(host) ?? 0) > Date.now()) {
+    throw new PoliteFetchError(`${host} refused earlier requests; paused`, { url, code: 'PAUSED' });
+  }
   if (hit !== undefined) return hit;
   // Share in-flight work only for un-cancellable callers, so one caller's abort can't fail another.
   if (!signal && inFlight.has(key)) return inFlight.get(key);
@@ -192,6 +199,7 @@ export async function politeFetch(url, opts = {}) {
         const wait = asked ?? 2 ** attempt * 2000;
         limiterFor(host).penalize(wait);
         if (attempt >= maxRetries || wait > MAX_RETRY_AFTER_MS) {
+          pausedUntil.set(host, Date.now() + Math.max(wait, PAUSE_AFTER_REFUSAL_MS));
           throw new PoliteFetchError(`Rate limited by ${host}`, { status: res.status, url, code: 'RATE_LIMITED' });
         }
         attempt++;
@@ -201,6 +209,10 @@ export async function politeFetch(url, opts = {}) {
         limiterFor(host).penalize(2 ** attempt * 1000);
         attempt++;
         continue;
+      }
+      if (res.status === 403) {
+        pausedUntil.set(host, Date.now() + PAUSE_AFTER_REFUSAL_MS);
+        throw new PoliteFetchError(`HTTP 403 from ${host}; pausing requests to it`, { status: 403, url, code: 'REFUSED' });
       }
       if (!res.ok) throw new PoliteFetchError(`HTTP ${res.status} from ${host}`, { status: res.status, url, code: 'HTTP' });
       const body = as === 'json' ? await res.json() : await res.text();

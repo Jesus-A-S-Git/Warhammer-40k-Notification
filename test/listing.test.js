@@ -64,3 +64,24 @@ test('best price prefers the kit searched for over a cheaper, different kit', as
   assert.equal(out.best.title, 'Intercessor Squad');
   assert.equal(out.best.price, 57.37);
 });
+
+test('Discount Games Inc has its own slower rate limit; others keep the default', async () => {
+  const { registerRetailerLimits, RETAILER_LIMIT } = await import('../src/price/adapters/index.js');
+  const seen = new Map();
+  registerRetailerLimits((host, limit) => seen.set(host, limit));
+  assert.equal(seen.get('www.discountgamesinc.com').requestsPerMinute, 2);
+  assert.equal(seen.get('www.miniaturemarket.com').requestsPerMinute, RETAILER_LIMIT.requestsPerMinute);
+});
+
+test('a refused store is reported clearly and other stores still return', async () => {
+  const { searchPrices, statusForError } = await import('../src/price/search.js');
+  assert.match(statusForError({ code: 'REFUSED' }).error, /refused/i);
+  assert.match(statusForError({ code: 'PAUSED' }).error, /paused/i);
+  const ok = { search: async () => [{ retailerId: 'wargame-portal', title: 'Intercessor Squad', price: 57.37,
+    currency: 'USD', inStock: true, url: 'https://wargameportal.com/products/intercessor-squad' }] };
+  const refused = { search: async () => { const e = new Error('403'); e.code = 'REFUSED'; throw e; } };
+  const r = await searchPrices({ query: 'intercessors', region: 'US', currency: 'USD',
+    adapterFactory: (ret) => (ret.id === 'discount-games-inc' ? refused : ok) });
+  assert.equal(r.retailers.find((s) => s.id === 'discount-games-inc').status, 'error');
+  assert.ok(r.results.some((o) => o.retailerId === 'wargame-portal'));
+});

@@ -46,7 +46,8 @@ The site also builds as a fully static site, deployed by `.github/workflows/page
    Run workflow) to fetch the first prices.
 4. The site appears at `https://<your-username>.github.io/Warhammer-40k-Notification/`.
 
-To track more kits, add them to `src/price/watchlist.js`. Each extra kit adds about 10–20 s to a refresh.
+To track more kits, add them to `src/price/watchlist.js`. A full refresh takes about 35 minutes (the slowest store,
+at 2 requests/min, sets the pace); each extra kit adds about 30 s.
 
 Preview the static build locally:
 
@@ -77,7 +78,8 @@ Every outbound request goes through `src/shared/httpClient.js` → `politeFetch(
 
 | Safeguard | Detail |
 |---|---|
-| Per-host token bucket | Retailers 6 req/min, Wahapedia 2 req/min, default ≤ 10; 1 concurrent; bounded queue (fails fast when busy) |
+| Per-host token bucket | Retailers 6 req/min (Discount Games Inc 2 req/min: its site protection refused us at 6/min), Wahapedia 2 req/min, default ≤ 10; 1 concurrent; bounded queue (fails fast when busy) |
+| Circuit breaker | A store that answers HTTP 403, or keeps rate-limiting us, is paused for an hour: no further requests are sent to it |
 | Caching | Search results cached ~30 min, unit data 24 h; identical in-flight requests share one fetch |
 | Back-off | Honours `429`/`503` `Retry-After`, exponential backoff, bounded retries |
 | robots.txt | RFC 9309 rules checked per host (unreachable/5xx robots.txt ⇒ treated as disallowed) |
