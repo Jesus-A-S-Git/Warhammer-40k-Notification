@@ -1,0 +1,27 @@
+# Diagnostics only: shows what each retailer returns to the price fetcher when
+# called from GitHub's servers. Makes ≤ 3 polite requests per store; deploys nothing.
+name: Retailer probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: 'Search term to probe with'
+        default: 'intercessors'
+  push:
+    branches: ['claude/**']
+    paths: ['scripts/probe-retailers.js', '.github/workflows/retailer-probe.yml', 'src/price/retailers.js', 'src/price/adapters/**']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/probe-retailers.js "${{ inputs.query || 'intercessors' }}"
