@@ -93,7 +93,8 @@ test('currency conversion and MSRP lookup', () => {
   assert.equal(findMsrp('Primaris Intercessors')?.name, 'Space Marines Intercessors');
   assert.equal(findMsrp('Assault Intercessors')?.name, 'Space Marines Assault Intercessors');
   assert.equal(findMsrp('space marines'), null);
-  assert.equal(findMsrp('chaos terminators'), null);
+  assert.equal(findMsrp('chaos terminators')?.name, 'Chaos Space Marines Chaos Terminators');
+  assert.notEqual(findMsrp('terminators')?.faction, 'chaos-space-marines');
 });
 
 test('fuzzy matching excludes non-kits and other factions', () => {

@@ -7,9 +7,10 @@
 # links to this workflow's "Run workflow" page). Pushes to main redeploy the
 # site but reuse the currently published price snapshot.
 #
-# A refresh searches the watchlist (src/price/watchlist.js) at US retailers
-# (home location: Seattle, WA) through the rate-limited pipeline:
-# <= 6 requests/min per retailer, one at a time, robots.txt respected.
+# A refresh searches the product catalogue (src/price/catalog.js + watchlist.js) at US
+# retailers (home location: Seattle, WA) through the rate-limited pipeline:
+# <= 6 requests/min per retailer (2/min for slower stores), one at a time, robots.txt
+# respected, at most 80 searches per store and 40 minutes per refresh (src/price/snapshot.js).
 name: Deploy to GitHub Pages
 
 on:
@@ -52,7 +53,14 @@ jobs:
 
       - name: Refresh price snapshot (manual run only, rate-limited)
         if: github.event_name == 'workflow_dispatch' && (inputs.refresh_prices || inputs.demo)
-        run: node scripts/snapshot-prices.js _site/data/prices.json ${{ inputs.demo && '--demo' || '' }}
+        env:
+          PAGES_URL: ${{ steps.pages.outputs.base_url }}
+        # The published snapshot is the "previous" one: it supplies the rolling price
+        # history and recent offers to carry over for stores that fail this time.
+        run: |
+          mkdir -p _site/data
+          curl -fsSL "$PAGES_URL/data/prices.json" -o _site/data/prices.json || rm -f _site/data/prices.json
+          node scripts/snapshot-prices.js _site/data/prices.json ${{ inputs.demo && '--demo' || '' }}
 
       - name: Keep the currently published prices
         if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.refresh_prices || inputs.demo)) }}

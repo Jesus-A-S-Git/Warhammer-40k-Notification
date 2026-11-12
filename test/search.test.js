@@ -210,8 +210,11 @@ describe('price matching', () => {
     assert.equal(findMsrp('necron warriers')?.name, 'Necron Warriors');
     assert.equal(findMsrp('gaunts')?.name, 'Tyranids Termagants');
     assert.equal(findMsrp('Assault Intercessors')?.name, 'Space Marines Assault Intercessors');
-    assert.equal(findMsrp('hellblasters'), null);
-    assert.equal(findMsrp('chaos terminators'), null);
+    // The catalogue now lists these kits; they must map to themselves, not a lookalike.
+    assert.equal(findMsrp('hellblasters')?.name, 'Space Marines Hellblasters');
+    assert.equal(findMsrp('chaos terminators')?.name, 'Chaos Space Marines Chaos Terminators');
+    assert.equal(findMsrp('space marines'), null);
+    assert.equal(findMsrp('combat patrol'), null);
     assert.equal(findMsrp('termagants')?.name, 'Tyranids Termagants');
     assert.notEqual(findMsrp('terminators')?.name, 'Tyranids Termagants');
   });

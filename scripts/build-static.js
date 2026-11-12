@@ -18,6 +18,7 @@ const LIB = [
   'combat/data/units.generated.js', 'combat/data/catalog.js',
   'price/rank.js', 'price/retailers.js', 'price/trust.js', 'price/match.js',
   'price/msrp.js', 'price/currency.js', 'price/location.js', 'price/watchlist.js',
+  'price/catalog.js', 'price/deals.js', 'price/cart.js', 'price/history.js', 'price/overview.js',
   'search/fuzzy.js', 'combat/unitSearch.js',
 ];
 

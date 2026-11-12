@@ -5,6 +5,9 @@ import { RETAILERS, REGIONS, publicRetailer } from './retailers.js';
 import { CURRENCIES, RATES_PER_GBP, RATES_AS_OF } from './currency.js';
 import { searchPrices, DISCLAIMER } from './search.js';
 import { SUSPICIOUS_RATIO } from './trust.js';
+import { catalogPayload } from './catalog.js';
+import { planCart } from './overview.js';
+import { loadOverview } from './snapshotStore.js';
 
 export const priceRouter = Router();
 
@@ -91,5 +94,45 @@ priceRouter.get('/search', async (req, res) => {
   } catch (err) {
     console.error('price search failed', err);
     res.status(500).json({ error: 'Price search failed' });
+  }
+});
+
+// ---- Deal Finder (snapshot-based; never contacts retailers) -------------------
+
+const isDemo = (req) => process.env.PRICE_DEMO === '1' || req.query.demo === '1' || req.query.demo === 'true'
+  || req.body?.demo === true;
+
+priceRouter.get('/catalog', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600').json(catalogPayload());
+});
+
+// Per-product deals, top deals, value figures and store freshness from the latest snapshot.
+priceRouter.get('/overview', async (req, res) => {
+  try {
+    const { overview, source } = await loadOverview({ demo: isDemo(req) });
+    if (!overview) {
+      return res.status(404).json({ error: 'No price snapshot yet. Run `npm run snapshot` (live) or '
+        + '`npm run snapshot:demo` (sample data), or tick “Sample data”.' });
+    }
+    res.set('Cache-Control', 'no-cache').json({ ...overview, source });
+  } catch (err) {
+    console.error('overview failed', err);
+    res.status(500).json({ error: 'Could not build the deals overview' });
+  }
+});
+
+// Cart optimizer: { items: [{id, qty}], shipping?: {retailerId: {flat, freeOver}}, demo? }
+priceRouter.post('/cart', async (req, res) => {
+  const items = req.body?.items;
+  if (!Array.isArray(items) || !items.length || items.length > 40) {
+    return res.status(400).json({ error: '"items" must be a list of 1-40 {id, qty}' });
+  }
+  try {
+    const { overview } = await loadOverview({ demo: isDemo(req) });
+    if (!overview) return res.status(404).json({ error: 'No price snapshot yet' });
+    res.set('Cache-Control', 'no-store').json(planCart(overview, items, { overrides: req.body?.shipping }));
+  } catch (err) {
+    console.error('cart failed', err);
+    res.status(500).json({ error: 'Cart optimization failed' });
   }
 });

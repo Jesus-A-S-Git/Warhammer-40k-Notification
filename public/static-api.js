@@ -10,6 +10,15 @@ import { ALL_UNITS as UNITS, DATA_SOURCES } from './lib/combat/data/catalog.js';
 import { BadRequest, listUnits, listFactions, unitById, runSimulation, RULES_VERSION } from './lib/combat/service.js';
 import { rankOffers, retailersInfo, suggestionsPayload } from './lib/price/rank.js';
 import { checkOffer } from './lib/price/trust.js';
+import { catalogPayload } from './lib/price/catalog.js';
+import { buildOverview, planCart } from './lib/price/overview.js';
+
+// Deal Finder overview, computed once per page load from the snapshot.
+let overviewPromise;
+function loadOverview() {
+  overviewPromise ??= loadSnapshot().then((snap) => buildOverview(snap));
+  return overviewPromise;
+}
 
 let snapshotPromise;
 export function loadSnapshot() {
@@ -50,6 +59,24 @@ async function route(method, url, body) {
   if (method === 'GET' && p === '/api/combat/rules') return reply(200, { rulesVersion: RULES_VERSION });
 
   if (method === 'GET' && p === '/api/prices/retailers') return reply(200, retailersInfo());
+  if (method === 'GET' && p === '/api/prices/catalog') return reply(200, catalogPayload());
+  if (method === 'GET' && p === '/api/prices/overview') {
+    try {
+      const ov = await loadOverview();
+      return reply(200, { ...ov, source: 'data/prices.json' });
+    } catch (err) {
+      return reply(404, { error: `No price snapshot published yet (${err.message}).` });
+    }
+  }
+  if (method === 'POST' && p === '/api/prices/cart') {
+    const items = body?.items;
+    if (!Array.isArray(items) || !items.length || items.length > 40) return reply(400, { error: '"items" must be a list of 1-40 {id, qty}' });
+    try {
+      return reply(200, planCart(await loadOverview(), items, { overrides: body?.shipping }));
+    } catch (err) {
+      return reply(404, { error: `No price snapshot published yet (${err.message}).` });
+    }
+  }
   if (method === 'GET' && p === '/api/prices/suggestions') {
     // Tracked kits + MSRP names + every title in the published snapshot.
     let titles = [];

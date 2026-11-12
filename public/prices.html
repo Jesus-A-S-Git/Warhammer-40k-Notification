@@ -1,122 +1,124 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Price Finder · 40k Toolkit</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deal Finder · 40k Toolkit</title>
+  <meta name="description" content="Find the cheapest delivered price on Warhammer 40,000 sets from vetted stores: deal scores, cart optimizer, price history and watchlist.">
+  <meta name="color-scheme" content="dark light">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
   <link rel="stylesheet" href="styles.css">
+  <script type="module" src="ui.js"></script>
   <style>
-    .search-form { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: end; }
-    @media (min-width: 720px) { .search-form { grid-template-columns: 2fr 1fr 1fr auto auto; } }
-    .check { display: flex; gap: 6px; align-items: center; color: var(--text); margin: 0; padding-bottom: 8px; white-space: nowrap; }
-    .check input { width: auto; }
-    .section { margin-top: var(--gap); }
-    .best h2 { margin: 0 0 4px; font-size: 1rem; color: var(--muted); font-weight: 600; }
-    .best .price { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .best a.title { font-weight: 600; font-size: 1.1rem; }
-    .meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; }
-    .statuses { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
-    .flags .badge { margin: 0 4px 2px 0; }
-    td a { color: var(--accent); }
-    tr.oos td { opacity: .7; }
-    .hidden { display: none; }
-    a.button { display: inline-block; padding: 9px 16px; border-radius: 6px; background: var(--accent); color: var(--accent-text); font-weight: 600; text-decoration: none; margin-right: 8px; }
-    details summary { cursor: pointer; font-weight: 600; }
+    /* Page-specific layout only; all components come from styles.css. */
+    .tab[hidden], .check[hidden] { display: none; }
+    .deal-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .deal-card .card-title { align-items: flex-start; }
+    .deal-card .card-title a, .deal-card .card-title button.linkish { min-width: 0; overflow-wrap: anywhere; }
+    .deal-card .actions { margin-top: auto; }
+    .linkish { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: inherit; text-align: left; cursor: pointer; box-shadow: none; min-height: 0; }
+    .linkish:hover { color: var(--accent); background: none; }
+    .score { font-variant-numeric: tabular-nums; font-weight: 700; }
+    .spark { width: 120px; height: 32px; display: block; }
+    .hist svg { max-height: 220px; }
+    .plan-grid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
+    .cell-sub { display: block; font-size: .78rem; color: var(--muted); font-weight: 400; }
+    .w-num { width: 7.5em; }
+    .search-row { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: end; }
+    @media (min-width: 720px) { .search-row { grid-template-columns: 1fr auto; } }
     @media (max-width: 640px) { th.opt, td.opt { display: none; } }
-    .combo { position: relative; }
-    .combo ul[role=listbox] { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin: 4px 0 0; padding: 4px 0;
-      list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-      box-shadow: 0 6px 18px rgba(0,0,0,.18); max-height: 18rem; overflow-y: auto; }
-    .combo li[role=option] { padding: 10px 12px; cursor: pointer; line-height: 1.3; }
-    .combo li[role=option][aria-selected=true], .combo li[role=option]:hover { background: var(--accent); color: var(--accent-text); }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
-    .chips .label { font-size: .85rem; color: var(--muted); margin-right: 2px; }
-    .chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text);
-      font: inherit; font-size: .85rem; font-weight: 500; cursor: pointer; width: auto; }
-    .chip:hover, .chip:focus-visible { border-color: var(--accent); color: var(--accent); }
-    button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600;
-      text-decoration: underline; cursor: pointer; width: auto; }
-    #dym { margin: 12px 0 0; }
-    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
   </style>
 </head>
 <body>
-  <header class="site"><nav>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site"><nav aria-label="Main">
     <a class="brand" href="./">40k Toolkit</a>
     <a href="./">Home</a>
-    <a href="prices.html" aria-current="page">Price Finder</a>
-    <a href="combat.html">Combat Calculator</a>
+    <a href="prices.html" aria-current="page">Deal Finder</a>
+    <a href="combat.html">Damage Simulator</a>
+    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme"></button>
   </nav></header>
-  <main>
-    <h1>Price Finder</h1>
-    <p class="lede">Find the cheapest place to buy a kit, searching only vetted retailers. Marketplaces and unknown storefronts are never shown.</p>
-    <p class="muted">📍 Set up for <strong>Seattle, WA</strong>: US retailers and USD by default, with estimated Seattle sales tax. Overseas (UK/EU) stores add international shipping and import fees, so they’re flagged when shown.</p>
-    <div id="snapshot-note" class="card muted hidden" role="status" style="margin-bottom:16px"></div>
 
-    <form class="card search-form" id="search-form" novalidate>
-      <div class="combo">
-        <label for="q" id="q-label">Kit or set name</label>
-        <input id="q" name="q" type="search" required minlength="2" maxlength="100"
-               placeholder="e.g. Combat Patrol: Space Marines" autocomplete="off" autocapitalize="off" spellcheck="false"
-               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="q-list" aria-describedby="q-help">
-        <ul id="q-list" role="listbox" aria-labelledby="q-label" hidden></ul>
-        <span id="q-help" class="sr-only">Typos and nicknames are fine, for example “termies” or “cp sm”. Use the arrow keys to pick a suggestion.</span>
-      </div>
-      <div>
-        <label for="region">Region</label>
-        <select id="region" name="region">
-          <option value="All">All regions</option>
-          <option value="UK">UK</option>
-          <option value="US" selected>US (ships to Seattle)</option>
-          <option value="EU">EU</option>
-        </select>
-      </div>
-      <div>
-        <label for="currency">Show prices in</label>
-        <select id="currency" name="currency">
-          <option value="native">Store currency</option>
-          <option value="GBP">GBP (£)</option>
-          <option value="USD" selected>USD ($)</option>
-          <option value="EUR">EUR (€)</option>
-          <option value="CAD">CAD</option>
-          <option value="AUD">AUD</option>
-        </select>
-      </div>
-      <label class="check"><input type="checkbox" id="demo" name="demo"> Demo data</label>
-      <button type="submit" id="go">Search</button>
-    </form>
-
-    <div id="popular" class="chips hidden" role="group" aria-labelledby="popular-label">
-      <span class="label" id="popular-label">Popular kits:</span>
-    </div>
-    <p id="dym" class="hidden" aria-live="polite"></p>
-    <p id="status" class="muted section" role="status" aria-live="polite"></p>
-    <p id="error" class="error hidden" role="alert"></p>
-
-    <div id="results" class="hidden">
-      <div id="best" class="card best section"></div>
-      <div class="card section">
-        <div id="msrp" class="muted"></div>
-        <ul id="retailer-status" class="statuses" aria-label="Retailer status"></ul>
-        <p id="filtered" class="muted" style="margin:8px 0 0"></p>
-      </div>
-      <div class="card section table-wrap">
-        <table>
-          <thead><tr>
-            <th>Retailer</th><th>Product</th><th class="num">Price</th>
-            <th class="num" id="conv-head">Converted</th><th>Stock</th><th class="opt">Flags</th>
-          </tr></thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
+  <main id="main">
+    <div class="page-head">
+      <h1>Deal Finder</h1>
+      <p class="lede">The cheapest <em>delivered</em> price on Warhammer 40,000 sets from vetted stores, set up for <strong id="home-label">Seattle, WA</strong>: estimated shipping and sales tax included, deals scored against RRP, plus a cart optimizer, price history and a watchlist.</p>
     </div>
 
-    <p id="disclaimer" class="muted section"></p>
+    <div class="stack">
+      <div id="status-callouts" class="stack tight" aria-live="polite"></div>
+      <div id="fresh-stats" class="stats" aria-label="Price data status"></div>
 
-    <details class="card section" id="about">
-      <summary>Which stores are searched, and why they’re trusted</summary>
-      <div id="retailer-list" class="table-wrap" style="margin-top:12px"><p class="muted">Loading…</p></div>
-    </details>
+      <div class="card compact">
+        <div class="search-row">
+          <div class="field" style="margin:0">
+            <label for="q" id="q-label">Find a product</label>
+            <div class="ac">
+              <input id="q" type="search" placeholder="Combat Patrol, kit, codex… e.g. “cp necrons”, “termies”" autocomplete="off"
+                     autocapitalize="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false"
+                     aria-controls="q-list" aria-describedby="q-help" maxlength="100">
+              <ul id="q-list" class="ac-list" role="listbox" aria-labelledby="q-label" hidden></ul>
+            </div>
+            <p id="q-help" class="hint">Typos and nicknames are fine. Pick a product to see every store’s delivered price, history and value.</p>
+          </div>
+          <label class="check" id="demo-wrap" hidden><input type="checkbox" id="demo"> Sample data</label>
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Deal Finder sections">
+        <button class="tab" role="tab" id="tab-deals" aria-controls="panel-deals" data-tab="deals">Top deals</button>
+        <button class="tab" role="tab" id="tab-browse" aria-controls="panel-browse" data-tab="browse">Browse</button>
+        <button class="tab" role="tab" id="tab-product" aria-controls="panel-product" data-tab="product" hidden>Product</button>
+        <button class="tab" role="tab" id="tab-cart" aria-controls="panel-cart" data-tab="cart">Cart optimizer</button>
+        <button class="tab" role="tab" id="tab-watch" aria-controls="panel-watch" data-tab="watch">Watchlist</button>
+        <button class="tab" role="tab" id="tab-value" aria-controls="panel-value" data-tab="value">Value per model</button>
+        <button class="tab" role="tab" id="tab-search" aria-controls="panel-search" data-tab="search">Search stores</button>
+        <button class="tab" role="tab" id="tab-stores" aria-controls="panel-stores" data-tab="stores">Stores &amp; method</button>
+      </div>
+
+      <section class="tab-panel stack" role="tabpanel" id="panel-deals" aria-labelledby="tab-deals" hidden></section>
+      <section class="tab-panel stack" role="tabpanel" id="panel-browse" aria-labelledby="tab-browse" hidden>
+        <div class="layout-sidebar">
+          <aside class="card stack sticky" aria-label="Filters">
+            <div class="card-title">Filters</div>
+            <div class="field"><label for="f-faction">Faction</label><select id="f-faction"><option value="">All factions</option></select></div>
+            <div class="field"><span class="label" id="f-cat-label">Category</span><div class="chips" id="f-cat" role="group" aria-labelledby="f-cat-label"></div></div>
+            <div class="field"><label for="f-max">Max price</label><div class="input-group"><span class="addon">$</span><input id="f-max" type="number" min="0" step="5" inputmode="decimal" placeholder="Any"></div></div>
+            <div class="field"><label for="f-store">Store</label><select id="f-store"><option value="">Any store</option></select></div>
+            <label class="check"><input type="checkbox" id="f-stock" checked> In stock only</label>
+            <label class="check"><input type="checkbox" id="f-trusted"> Hide stores with review cautions</label>
+            <label class="check"><input type="checkbox" id="f-offers" checked> Only products with prices</label>
+            <div class="field"><span class="label" id="f-sort-label">Sort by</span>
+              <div class="seg" id="f-sort" role="group" aria-labelledby="f-sort-label">
+                <button type="button" data-sort="score" aria-pressed="true">Deal score</button>
+                <button type="button" data-sort="total">Total</button>
+                <button type="button" data-sort="off">% off</button>
+                <button type="button" data-sort="price">Price</button>
+              </div>
+            </div>
+            <button type="button" class="btn ghost sm" id="f-reset">Reset filters</button>
+          </aside>
+          <div class="stack">
+            <p id="browse-count" class="muted" role="status" aria-live="polite"></p>
+            <div id="browse-list" class="grid"></div>
+          </div>
+        </div>
+      </section>
+      <section class="tab-panel stack" role="tabpanel" id="panel-product" aria-labelledby="tab-product" hidden></section>
+      <section class="tab-panel stack" role="tabpanel" id="panel-cart" aria-labelledby="tab-cart" hidden></section>
+      <section class="tab-panel stack" role="tabpanel" id="panel-watch" aria-labelledby="tab-watch" hidden></section>
+      <section class="tab-panel stack" role="tabpanel" id="panel-value" aria-labelledby="tab-value" hidden></section>
+      <section class="tab-panel stack" role="tabpanel" id="panel-search" aria-labelledby="tab-search" hidden></section>
+      <section class="tab-panel stack" role="tabpanel" id="panel-stores" aria-labelledby="tab-stores" hidden></section>
+
+      <p id="disclaimer" class="muted small"></p>
+    </div>
   </main>
+
+  <footer class="site">
+    <p>Prices are estimates from vetted stores; always confirm the final price at checkout. RRP figures are approximate.</p>
+    <p>40k Toolkit is an unofficial fan project and is not affiliated with or endorsed by Games Workshop. Warhammer 40,000 and related marks are trademarks of Games Workshop Ltd.</p>
+  </footer>
   <script type="module" src="prices.js"></script>
 </body>
 </html>

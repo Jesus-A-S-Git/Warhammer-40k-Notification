@@ -3,6 +3,8 @@
 // fuzzy matching and flagging as live ones; several entries below are
 // deliberately bad to prove the filter works.
 
+import { CATALOG as PRODUCT_CATALOG } from './catalog.js';
+
 export const DEMO_FETCHED_AT = '2026-01-01T12:00:00.000Z';
 
 const SLUG = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -42,7 +44,7 @@ const HOST = {
   'wayland-games': 'www.waylandgames.co.uk', 'firestorm-games': 'www.firestormgames.co.uk',
   'goblin-gaming': 'www.goblingaming.co.uk', 'miniature-market': 'www.miniaturemarket.com',
   'noble-knight': 'www.nobleknight.com', 'discount-games-inc': 'www.discountgamesinc.com',
-  fantasywelt: 'www.fantasywelt.de',
+  fantasywelt: 'www.fantasywelt.de', 'wargame-portal': 'wargameportal.com',
 };
 
 // Offers that MUST be dropped by the trust filter.
@@ -89,7 +91,7 @@ export function demoAdapter(retailer) {
         const [price, inStock] = Array.isArray(v) ? v : [v, true];
         offers.push({ retailerId: retailer.id, title, price, currency: retailer.currency,
           url: `https://${host}/products/${SLUG(title)}`, inStock,
-          imageUrl: undefined, fetchedAt: DEMO_FETCHED_AT });
+          imageUrl: undefined, fetchedAt: new Date().toISOString() });
       }
       for (const b of BAD_OFFERS[retailer.id] ?? []) {
         offers.push({ ...b, retailerId: retailer.id, fetchedAt: DEMO_FETCHED_AT });
@@ -97,4 +99,53 @@ export function demoAdapter(retailer) {
       return offers;
     },
   };
+}
+
+// ---- Demo snapshot data for the Deal Finder (SAMPLE prices, never real) ----------
+
+// Deterministic pseudo-random 0..1 from a string (FNV-1a).
+function rnd(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return ((h >>> 0) % 10_000) / 10_000;
+}
+
+// How each demo store formats titles (exercises the matcher).
+const DEMO_TITLE = {
+  'miniature-market': (n) => n,
+  'discount-games-inc': (n) => `Warhammer 40,000: ${n}`,
+  'wargame-portal': (n) => n.replace(/^Combat Patrol: (.+)$/, '$1 Combat Patrol').replace(/^Codex: (.+)$/, 'Codex - $1'),
+};
+// Typical demo discount band per store (fraction of RRP).
+const DEMO_BAND = { 'miniature-market': [0.80, 0.92], 'discount-games-inc': [0.78, 0.90], 'wargame-portal': [0.85, 0.85] };
+
+/**
+ * SAMPLE offers for every catalogue product at the US stores (for the demo
+ * snapshot / UI checks). Includes a few listings the filters must reject.
+ */
+export function demoCatalogOffers(fetchedAt) {
+  const out = [];
+  for (const e of PRODUCT_CATALOG) {
+    for (const [rid, fmt] of Object.entries(DEMO_TITLE)) {
+      const x = rnd(`${e.id}|${rid}`);
+      if (x < 0.12) continue; // not stocked at this store
+      const [lo, hi] = DEMO_BAND[rid];
+      const price = Math.round(e.USD * (lo + (hi - lo) * rnd(`${rid}|${e.id}|p`)) * 100) / 100;
+      const inStock = x < 0.22 ? false : x < 0.27 ? null : true;
+      out.push({ retailerId: rid, title: fmt(e.name), price, currency: 'USD',
+        url: `https://${HOST[rid]}/products/${SLUG(e.name)}`, inStock, fetchedAt });
+    }
+  }
+  // Must be filtered out / flagged by the pipeline:
+  out.push(
+    { retailerId: 'miniature-market', title: 'Used - Combat Patrol: Necrons (partially built)', price: 60, currency: 'USD',
+      url: 'https://www.miniaturemarket.com/products/used-cp-necrons', inStock: true, fetchedAt },
+    { retailerId: 'discount-games-inc', title: 'Space Marines Intercessors Upgrade Sprue', price: 9, currency: 'USD',
+      url: 'https://www.discountgamesinc.com/products/intercessor-upgrade-sprue', inStock: true, fetchedAt },
+    { retailerId: 'wargame-portal', title: 'Space Marines Intercessors (clearance)', price: 24, currency: 'USD',
+      url: 'https://wargameportal.com/products/intercessors-clearance', inStock: true, fetchedAt },
+    { retailerId: 'wargame-portal', title: 'Combat Patrol: Orks', price: 59, currency: 'USD',
+      url: 'https://wargame-portal-deals.example/products/cp-orks', inStock: true, fetchedAt },
+  );
+  return out;
 }
