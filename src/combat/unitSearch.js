@@ -45,9 +45,11 @@ export function findUnits(units, q) {
  * confident match that is not tied with another unit ("guard" stays ambiguous,
  * "nope" stays unknown).
  */
-export function resolveUnit(units, q, { min = 0.85 } = {}) {
+export function resolveUnit(units, q, { min = 0.85, minCoverage = 0.5 } = {}) {
   const [top, next] = rankUnits(units, q);
-  if (!top || top.score < min) return null;
+  // With 1000+ datasheets a short typo can brush a long name ("nope" ~ "Node..."):
+  // the query must also account for a fair share of the matched name.
+  if (!top || top.score < min || (!top.exact && top.coverage < minCoverage)) return null;
   if (next && next.exact === top.exact && next.score === top.score && next.coverage === top.coverage) return null;
   return top.unit;
 }

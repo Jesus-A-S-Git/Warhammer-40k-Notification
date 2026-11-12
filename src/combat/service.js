@@ -241,13 +241,32 @@ function pick(p) { return { T: p.T, Sv: p.Sv, inv: p.inv ?? null, W: p.W, fnp: p
 
 export const summary = (u) => ({
   id: u.id, name: u.name, faction: u.faction, aliases: u.aliases, models: u.models,
-  profile: u.profile,
+  profile: u.profile, keywords: u.keywords, points: u.points ?? null, source: u.source ?? 'seed',
   weapons: u.weapons.map((w) => ({ id: w.id, name: w.name, type: w.type })),
 });
 
+/** Lean row for pickers/autocomplete (the full catalogue summary is ~1 MB). */
+export const brief = (u) => {
+  const r = { id: u.id, name: u.name, faction: u.faction, models: u.models };
+  if (u.aliases?.length) r.aliases = u.aliases;
+  if (u.points) r.points = u.points;
+  return r;
+};
 
-export function listUnits(units, q = '') {
-  return findUnits(units, String(q).slice(0, 80)).map(summary);
+const normFaction = (s) => String(s ?? '').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** Units matching `q` (fuzzy), optionally limited to one faction (case-insensitive). */
+export function listUnits(units, q = '', faction = '', { view = 'full' } = {}) {
+  const f = normFaction(String(faction).slice(0, 80));
+  const pool = f ? units.filter((u) => normFaction(u.faction) === f) : units;
+  return findUnits(pool, String(q).slice(0, 80)).map(view === 'brief' ? brief : summary);
+}
+
+/** Factions with unit counts, alphabetical. */
+export function listFactions(units) {
+  const counts = new Map();
+  for (const u of units) counts.set(u.faction, (counts.get(u.faction) || 0) + 1);
+  return [...counts].map(([name, n]) => ({ name, units: n })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Validate + run. Throws BadRequest for invalid input. */

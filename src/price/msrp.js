@@ -1,54 +1,100 @@
-// Seeded, APPROXIMATE MSRP table for common kits (2025-2026 price levels).
-// Used for the "too good to be true" check and the "% saving" display when no
-// official price is available. Values are rounded estimates, not quotes:
-// GW changes prices periodically, so verify on warhammer.com.
+// APPROXIMATE recommended retail prices, derived from the product catalogue
+// (catalog.js). Used for the "too good to be true" check, "% off RRP", deal
+// scores and to map a store's listing title onto a catalogue product.
+// Values are rounded estimates, not quotes: GW changes prices periodically.
 import { convert } from './currency.js';
-import { matchScore } from './match.js';
-import { expandQuery } from '../search/fuzzy.js';
+import { matchScore, cleanTitle } from './match.js';
+import { expandQuery, normalize } from '../search/fuzzy.js';
+import { CATALOG, RRP_AS_OF } from './catalog.js';
 
-export const MSRP_TABLE = [
-  { name: 'Combat Patrol: Space Marines', kit: 'Combat Patrol', GBP: 100, USD: 170, EUR: 120 },
-  { name: 'Combat Patrol: Necrons', kit: 'Combat Patrol', GBP: 100, USD: 170, EUR: 120 },
-  { name: 'Combat Patrol: Orks', kit: 'Combat Patrol', GBP: 100, USD: 170, EUR: 120 },
-  { name: 'Combat Patrol: Tyranids', kit: 'Combat Patrol', GBP: 100, USD: 170, EUR: 120 },
-  { name: 'Combat Patrol: Chaos Space Marines', kit: 'Combat Patrol', GBP: 100, USD: 170, EUR: 120 },
-  { name: 'Combat Patrol: Astra Militarum', kit: 'Combat Patrol', GBP: 100, USD: 170, EUR: 120 },
-  { name: 'Combat Patrol: Adepta Sororitas', kit: 'Combat Patrol', GBP: 100, USD: 170, EUR: 120 },
-  { name: 'Combat Patrol: T’au Empire', kit: 'Combat Patrol', GBP: 100, USD: 170, EUR: 120 },
-  { name: 'Space Marines Intercessors', kit: 'Intercessors', GBP: 45, USD: 65, EUR: 55 },
-  { name: 'Space Marines Assault Intercessors', kit: 'Assault Intercessors', GBP: 45, USD: 65, EUR: 55 },
-  { name: 'Space Marines Terminators', kit: 'Terminators', GBP: 42.5, USD: 65, EUR: 52.5 },
-  { name: 'Space Marines Terminator Assault Squad', kit: 'Terminator Assault Squad', GBP: 42.5, USD: 65, EUR: 52.5 },
-  { name: 'Space Marines Infernus Squad', kit: 'Infernus Squad', GBP: 45, USD: 65, EUR: 55 },
-  { name: 'Necron Warriors', kit: 'Warriors', GBP: 40, USD: 60, EUR: 50 },
-  { name: 'Ork Boyz', kit: 'Boyz', GBP: 35, USD: 55, EUR: 45 },
-  { name: 'Tyranids Termagants', kit: 'Termagants', GBP: 32.5, USD: 50, EUR: 40 },
-  { name: 'Boarding Patrol: Space Marines', kit: 'Boarding Patrol', GBP: 85, USD: 140, EUR: 105 },
-  { name: 'Start Collecting! Space Marines (legacy)', kit: 'Start Collecting', GBP: 60, USD: 95, EUR: 75 },
-].map((e) => ({ ...e, approximate: true, source: 'seeded table (approximate)' }));
+export const MSRP_TABLE = CATALOG.map((e) => ({ ...e, source: `seeded catalogue, ${RRP_AS_OF}` }));
+
+const STOP = new Set(['the', 'of', 'and', 'set', 'squad', 'warhammer', '40000', '40k', 'space', 'marine', 'marines']);
+const words = (s) => normalize(s).split(' ').filter((w) => w.length > 2 && !STOP.has(w)).map((w) => w.slice(0, 5));
+// Prefilter index: 5-letter word stems -> entries, so a title is only scored
+// against entries that share at least one distinctive stem (or a typo of one,
+// handled by also indexing 4-letter stems).
+const INDEX = new Map();
+for (const e of MSRP_TABLE) {
+  for (const t of [e.name, e.kit, ...e.aliases]) {
+    for (const w of words(t)) {
+      for (const k of [w, w.slice(0, 4)]) {
+        if (!INDEX.has(k)) INDEX.set(k, new Set());
+        INDEX.get(k).add(e);
+      }
+    }
+  }
+}
+function candidates(text) {
+  const out = new Set();
+  for (const w of words(text)) for (const k of [w, w.slice(0, 4)]) for (const e of INDEX.get(k) ?? []) out.add(e);
+  return out.size ? out : MSRP_TABLE;
+}
+
+const cache = new Map();
+
+const CHAPTER_RE = /\b(blood angels|dark angels|space wolves|black templars|deathwatch|grey knights)\b/i;
+const PROMO_RE = /\b(clearance|on sale|sale|hot deal|special offer|new release|pre-?order|in stock|free shipping)\b/gi;
+/** Title reduced to the words that identify the product. */
+function productText(text) {
+  let t = cleanTitle(text) || String(text ?? '');
+  t = t.replace(PROMO_RE, ' ');
+  // "Space Marines - Blood Angels Combat Patrol": the chapter is the product line.
+  if (CHAPTER_RE.test(t)) t = t.replace(/\b(space marines?|adeptus astartes)\b/gi, ' ');
+  return t.replace(/\s+/g, ' ').trim();
+}
 
 /**
- * Best MSRP entry for a title or query, or null.
+ * Best catalogue entry for a title or query, or null.
  *  back = how much of `text` the entry name covers (must be high: no extra
  *         distinctive words, so "Assault Intercessors" != "Intercessors").
- *  fwd  = how much of the entry's kit name (without faction) `text` covers,
- *         so a vague query such as "space marines" matches nothing.
+ *  fwd  = how much of the entry's `kit` words `text` covers, so a vague query
+ *         such as "space marines" or "combat patrol" matches nothing.
  */
 export function findMsrp(text, { minBack = 0.75, minFwd = 0.75 } = {}) {
+  const key = `${minBack}|${minFwd}|${text}`;
+  if (cache.has(key)) return cache.get(key);
   let best = null; let bestKey = -1;
-  text = expandQuery(text); // "cp sm" -> "combat patrol space marines", "termies" -> "terminators"
-  for (const e of MSRP_TABLE) {
-    const back = matchScore(text, e.name.replace(/\(legacy\)/, ''));
-    const fwd = matchScore(e.kit, text);
-    if (back < minBack || fwd < minFwd) continue;
-    const key = back * 10 + fwd;
-    if (key > bestKey) { best = e; bestKey = key; }
+  const t = expandQuery(productText(text)); // "cp sm" -> "combat patrol space marines"
+  if (t) {
+    for (const e of candidates(t)) {
+      let back = 0;
+      for (const n of [e.name, ...e.aliases]) back = Math.max(back, matchScore(t, n));
+      if (back < minBack) continue;
+      // An alias counts as the kit too ("Primaris Intercessors").
+      // (`back` already applied the exclusion rules in the right direction.)
+      let fwd = matchScore(e.kit, t, { exclusions: false });
+      for (const a of e.aliases) fwd = Math.max(fwd, matchScore(a, t, { exclusions: false }));
+      if (fwd < minFwd) continue;
+      const k = back * 10 + fwd;
+      if (k > bestKey) { best = e; bestKey = k; }
+    }
   }
+  if (cache.size > 5000) cache.clear();
+  cache.set(key, best);
   return best;
 }
 
-/** MSRP of entry in the given currency (native value, else converted from GBP). */
+/**
+ * Catalogue product id for a store listing title, or null. Seasonal boxes carry
+ * their own marketing names ("Space Marines Battleforce: Ultramarines Strike
+ * Force"), so for those it is enough that the title contains the whole entry name.
+ */
+export function productIdForTitle(title) {
+  const e = findMsrp(title);
+  if (e) return e.id;
+  const t = productText(title);
+  let best = null; let bestScore = 0;
+  for (const c of candidates(t)) {
+    if (c.category !== 'battleforce') continue;
+    const s = matchScore(c.name, t);
+    if (s >= 0.9 && s > bestScore) { best = c; bestScore = s; }
+  }
+  return best?.id ?? null;
+}
+
+/** MSRP of entry in the given currency (native value, else converted from USD). */
 export function msrpIn(entry, currency) {
   if (!entry) return null;
-  return entry[currency] ?? convert(entry.GBP, 'GBP', currency);
+  return entry[currency] ?? convert(entry.USD, 'USD', currency) ?? convert(entry.GBP, 'GBP', currency);
 }

@@ -9,6 +9,6 @@ export const HOME = Object.freeze({
   currency: 'USD',
   // Seattle combined state + local sales tax. Approximate: rates change, so
   // verify at checkout. Only applied to offers from domestic (US) retailers.
-  salesTaxRate: 0.1055,
-  salesTaxLabel: 'Seattle sales tax (≈10.55%)',
+  salesTaxRate: 0.1035,
+  salesTaxLabel: 'Seattle sales tax (≈10.35%)',
 });

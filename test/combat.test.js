@@ -11,6 +11,7 @@ import {
 } from '../src/combat/dataSource.js';
 import { __setFetch, __reset } from '../src/shared/httpClient.js';
 import { createApp } from '../src/server.js';
+import { ALL_UNITS } from '../src/combat/data/catalog.js';
 
 const close = (a, b, tol = 0.005, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} expected ${b}, got ${a}`);
 const sum = (xs) => xs.reduce((s, x) => s + x, 0);
@@ -249,8 +250,8 @@ describe('remote data source', () => {
 
   const fixtures = {
     'Factions.csv': 'id|name|link|\nSM|Space Marines|x|\n',
-    'Datasheets.csv': '﻿id|name|faction_id|virtual|\n000001|Company Heroes|SM|false|\n000002|Intercessor Squad|SM|false|\n',
-    'Datasheets_models.csv': 'datasheet_id|line|name|M|T|Sv|inv_sv|W|Ld|OC|\n000001|1|Company Hero|6"|4|3+|-|2|6+|1|\n000002|1|Intercessor|6"|4|3+|-|2|6+|2|\n',
+    'Datasheets.csv': '﻿id|name|faction_id|virtual|\n000001|Fixture Heroes|SM|false|\n000002|Intercessor Squad|SM|false|\n',
+    'Datasheets_models.csv': 'datasheet_id|line|name|M|T|Sv|inv_sv|W|Ld|OC|\n000001|1|Fixture Hero|6"|4|3+|-|2|6+|1|\n000002|1|Intercessor|6"|4|3+|-|2|6+|2|\n',
     'Datasheets_wargear.csv': 'datasheet_id|line|line_in_wargear|dice|name|description|range|type|A|BS_WS|S|AP|D|\n'
       + '000001|1|1||Heroic bolt rifle|<a>assault</a>, <a>heavy</a>, <a>devastating wounds</a>|24"|Ranged|2|3+|4|-1|1|\n'
       + '000002|1|1||Bolt rifle||24"|Ranged|2|3+|4|-1|1|\n',
@@ -259,10 +260,10 @@ describe('remote data source', () => {
   test('remote import is disabled by default and never fetches', async () => {
     let calls = 0;
     __setFetch(async () => { calls++; return new Response('', { status: 500 }); });
-    assert.equal(getUnits(), UNITS);
+    assert.equal(getUnits(), ALL_UNITS);
     await new Promise((r) => setTimeout(r, 10));
     assert.equal(calls, 0);
-    assert.equal(dataSourceStatus().source, 'seed');
+    assert.equal(dataSourceStatus().source, 'catalog');
   });
 
   test('declares the polite host budget', () => {
@@ -280,20 +281,20 @@ describe('remote data source', () => {
     const units = await refreshRemote({ hostLimit: { requestsPerMinute: 6000, burst: 10 } });
     assert.equal(seen.length, 4);
     assert.ok(seen.every((u) => u.startsWith('https://wahapedia.ru/wh40k10ed/')));
-    const heroes = units.find((u) => u.name === 'Company Heroes');
+    const heroes = units.find((u) => u.name === 'Fixture Heroes');
     assert.ok(heroes, "imported unit not in seed data is merged in");
     assert.equal(heroes.faction, 'Space Marines');
     assert.equal(heroes.profile.T, 4);
     assert.deepEqual(heroes.weapons[0].keywords, ['Assault', 'Heavy', 'Devastating Wounds']);
     assert.equal(units.filter((u) => u.name === 'Intercessor Squad').length, 1, 'seed wins on duplicates');
-    assert.equal(dataSourceStatus().source, 'seed+remote');
+    assert.equal(dataSourceStatus().source, 'catalog+remote');
   });
 
   test('falls back to seed data on failure', async () => {
     process.env.SKIP_ROBOTS = '1';
     __setFetch(async () => new Response('nope', { status: 403 }));
     const units = await refreshRemote({ hostLimit: { requestsPerMinute: 6000, burst: 10 } });
-    assert.equal(units, UNITS);
+    assert.equal(units, ALL_UNITS);
     assert.match(dataSourceStatus().lastError, /403/);
   });
 

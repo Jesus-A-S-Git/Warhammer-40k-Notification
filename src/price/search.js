@@ -47,6 +47,25 @@ function safeError(err) {
 }
 
 /**
+ * One search at one retailer through its adapter, with the deadline.
+ * @returns {Promise<{status: object, offers: object[], error?: Error}>}
+ *   status is { status: 'ok', received } or statusForError(err)
+ */
+export async function searchRetailer(r, query, { factory = adapterFor, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+  try {
+    // A slow per-store rate limit means a request can wait its turn longer than the
+    // default timeout; allow one full interval plus the normal budget.
+    const rpm = r.rateLimit?.requestsPerMinute;
+    const limitMs = rpm ? Math.max(timeoutMs, Math.ceil(60_000 / rpm) + timeoutMs) : timeoutMs;
+    const offers = await withTimeout((signal) => factory(r).search(query, { signal }), limitMs);
+    if (!Array.isArray(offers)) throw new Error('Adapter returned no list');
+    return { status: { status: 'ok', received: offers.length }, offers };
+  } catch (err) {
+    return { status: statusForError(err), offers: [], error: err };
+  }
+}
+
+/**
  * @param {object} o
  * @param {string} o.query
  * @param {'UK'|'US'|'EU'|'All'} [o.region='All']
@@ -72,23 +91,9 @@ export async function searchPrices({
       statuses.push({ ...base, status: 'skipped', reason: r.adapter.liveDisabledReason ?? 'Live lookups disabled for this store (see notes)' });
       return;
     }
-    try {
-      // A slow per-store rate limit means a request can wait its turn longer than the
-      // default timeout; allow one full interval plus the normal budget.
-      const rpm = r.rateLimit?.requestsPerMinute;
-      const limitMs = rpm ? Math.max(timeoutMs, Math.ceil(60_000 / rpm) + timeoutMs) : timeoutMs;
-      const offers = await withTimeout((signal) => factory(r).search(query, { signal }), limitMs);
-      if (!Array.isArray(offers)) throw new Error('Adapter returned no list');
-      let count = 0;
-      for (const o of offers) {
-        // An adapter may only speak for its own retailer.
-        candidates.push({ ...o, __source: r.id });
-        count++;
-      }
-      statuses.push({ ...base, status: 'ok', received: count });
-    } catch (err) {
-      statuses.push({ ...base, ...statusForError(err) });
-    }
+    const r1 = await searchRetailer(r, query, { factory, timeoutMs });
+    for (const o of r1.offers) candidates.push({ ...o, __source: r.id }); // an adapter may only speak for its own retailer
+    statuses.push({ ...base, ...r1.status });
   }));
   if (demo) for (const o of UNTRUSTED_FIXTURES) candidates.push({ ...o, __source: null });
   for (const o of extraOffers) candidates.push({ ...o, __source: o.retailerId });

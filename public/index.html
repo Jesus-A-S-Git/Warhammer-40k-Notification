@@ -1,30 +1,94 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>40k Toolkit</title>
+  <meta name="description" content="Find real deals on Warhammer 40,000 kits from vetted retailers, and simulate damage for any unit and weapon.">
+  <meta name="color-scheme" content="dark light">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
   <link rel="stylesheet" href="styles.css">
+  <script type="module" src="ui.js"></script>
 </head>
 <body>
-  <header class="site"><nav>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site"><nav aria-label="Main">
     <a class="brand" href="./">40k Toolkit</a>
-    <a href="./" aria-current="page">Home</a>
-    <a href="prices.html">Price Finder</a>
-    <a href="combat.html">Combat Calculator</a>
+    <a href="./">Home</a>
+    <a href="prices.html">Deal Finder</a>
+    <a href="combat.html">Damage Simulator</a>
+    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme"></button>
   </nav></header>
-  <main>
-    <h1>40k Toolkit</h1>
-    <p class="lede">Find the cheapest trusted place to buy a kit, then work out how hard it hits.</p>
-    <div class="grid">
-      <a class="card" href="prices.html" style="color:inherit;text-decoration:none">
-        <h2>Price Finder</h2>
-        <p class="muted">Compares prices from vetted retailers only, so no marketplace randoms or scam storefronts. Flags prices that look too good to be true.</p>
+
+  <main id="main">
+    <section class="hero">
+      <div class="eyebrow">Warhammer 40,000 toolkit</div>
+      <h1>Buy smarter. Roll with confidence.</h1>
+      <p class="lede">Find the best real price on a kit from retailers worth trusting, then work out exactly how hard your army hits before you roll a single die.</p>
+      <div class="row">
+        <a class="btn" href="prices.html">Find a deal</a>
+        <a class="btn secondary" href="combat.html">Simulate damage</a>
+      </div>
+    </section>
+
+    <div class="grid-2">
+      <a class="card feature" href="prices.html">
+        <div class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+        </div>
+        <h2>Deal Finder</h2>
+        <p>Find the best real deals on 40k kits from trusted retailers.</p>
+        <ul>
+          <li>Compares prices across a vetted list of stores only</li>
+          <li>Flags prices that look too good to be true</li>
+          <li>Shows the discount against the official price where known</li>
+        </ul>
+        <span class="go">Open Deal Finder <span aria-hidden="true">&rarr;</span></span>
       </a>
-      <a class="card" href="combat.html" style="color:inherit;text-decoration:none">
-        <h2>Combat Calculator</h2>
-        <p class="muted">Pick an attacking unit and a target, e.g. 10 Intercessors against Terminators, and see the expected wounds, models killed and the full probability distribution.</p>
+
+      <a class="card feature" href="combat.html">
+        <div class="feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="16" cy="8" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="8" cy="16" r="1.2" fill="currentColor"/><circle cx="16" cy="16" r="1.2" fill="currentColor"/></svg>
+        </div>
+        <h2>Damage Simulator</h2>
+        <p>Every unit, every weapon, full probability breakdown.</p>
+        <ul>
+          <li>Pick an attacking unit, its weapons and a target</li>
+          <li>Expected wounds, damage and models removed</li>
+          <li>The whole distribution, not just the average</li>
+        </ul>
+        <span class="go">Open Damage Simulator <span aria-hidden="true">&rarr;</span></span>
       </a>
     </div>
+
+    <h2 class="section-title">How it works</h2>
+    <div class="grid-3">
+      <div class="card">
+        <div class="step-num" aria-hidden="true">I</div>
+        <h3>Vetted retailers only</h3>
+        <p class="muted">Prices come from a short, hand-picked list of established stores. No anonymous marketplace sellers, no lookalike storefronts.</p>
+      </div>
+      <div class="card">
+        <div class="step-num" aria-hidden="true">II</div>
+        <h3>Polite fetching</h3>
+        <p class="muted">Each retailer is queried within a strict rate limit, results are cached, and robots.txt is respected. We would rather be a little stale than a nuisance.</p>
+      </div>
+      <div class="card">
+        <div class="step-num" aria-hidden="true">III</div>
+        <h3>Maths you can check</h3>
+        <p class="muted">The simulator works the dice sequence step by step, hit, wound, save, damage, so every number can be traced back to a roll.</p>
+      </div>
+    </div>
+
+    <div class="callout warn" style="margin-top:24px">
+      <strong>Check before you buy.</strong>
+      Prices and stock change quickly and may be out of date or missing for some stores. Always confirm the final price, shipping and availability on the retailer's own site. Unit data may lag behind the latest rules updates.
+    </div>
   </main>
+
+  <footer class="site">
+    <p>40k Toolkit is an unofficial fan project and is not affiliated with or endorsed by Games Workshop.</p>
+    <p>Warhammer 40,000 and related marks are trademarks of Games Workshop Ltd.</p>
+  </footer>
 </body>
 </html>

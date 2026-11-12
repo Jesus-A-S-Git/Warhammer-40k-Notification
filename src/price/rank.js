@@ -3,18 +3,19 @@
 // which re-runs every trust check client-side on the published snapshot.
 import { RETAILERS, publicRetailer } from './retailers.js';
 import { checkOffer, flagOffer, compareOffers, SUSPICIOUS_RATIO } from './trust.js';
-import { isMatch, matchScore, TITLE_MAX_TYPOS } from './match.js';
-import { findMsrp, msrpIn, MSRP_TABLE } from './msrp.js';
+import { isMatch, matchScore, exclusionReason, TITLE_MAX_TYPOS } from './match.js';
+import { offerDeal } from './deals.js';
+import { findMsrp, msrpIn, MSRP_TABLE, productIdForTitle } from './msrp.js';
 import { WATCHLIST, POPULAR } from './watchlist.js';
 import { suggest, normalize, matchDetail } from '../search/fuzzy.js';
 import { convert, RATES_AS_OF, RATES_PER_GBP } from './currency.js';
 import { HOME } from './location.js';
 
 export const DISCLAIMER =
-  'Prices and stock change frequently and may exclude shipping. Always verify the final price at '
-  + 'checkout on the retailer’s own site. Converted prices use static approximate exchange rates ('
-  + RATES_AS_OF + '). MSRP values are approximate. Only allowlisted retailers are shown; '
-  + 'links to any other domain are discarded.';
+  'Prices and stock change frequently. Delivered totals add ESTIMATED shipping, sales tax and import '
+  + 'duty to the listed price; store policies vary, so always verify the final price at checkout on the '
+  + 'retailer’s own site. Converted prices use static approximate exchange rates (' + RATES_AS_OF + '). '
+  + 'RRP values are approximate. Only allowlisted retailers are shown; links to any other domain are discarded.';
 
 /**
  * Names for autocomplete and "Did you mean": tracked kits, MSRP table names and
@@ -57,10 +58,12 @@ export function didYouMeanFor(query, titles = []) {
  * @param {object[]} [o.statuses]  per-retailer status entries
  * @param {object[]} [o.retailers] retailer order for statuses
  */
-export function rankOffers({ query, region = 'All', currency = 'native', demo = false, candidates, statuses = [], retailers = RETAILERS, home = HOME }) {
+export function rankOffers({ query, region = 'All', currency = 'native', demo = false, candidates, statuses = [], retailers = RETAILERS, home = HOME, didYouMean = true, shippingOverrides, product = null }) {
   const dropped = {};
   const drop = (reason) => { dropped[reason] = (dropped[reason] ?? 0) + 1; };
-  const queryMsrp = findMsrp(query);
+  // `product`: a catalogue entry whose offers were already matched by title
+  // (Deal Finder overview); skips query matching and uses its RRP.
+  const queryMsrp = product ?? findMsrp(query);
   const seen = new Set();
   const results = [];
   const trustedTitles = [];
@@ -72,7 +75,7 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
     const check = checkOffer(offer);
     if (!check.ok) { drop(check.reason); continue; }
     if (typeof offer.title === 'string') trustedTitles.push(offer.title);
-    if (!isMatch(query, offer.title)) { drop('no-match'); continue; }
+    if (!product && !isMatch(query, offer.title)) { drop(exclusionReason(query, offer.title) ?? 'no-match'); continue; }
     const href = new URL(offer.url).href;
     if (seen.has(href)) { drop('duplicate'); continue; }
     seen.add(href);
@@ -83,6 +86,9 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
     const domestic = !!home && r.region === home.region;
     if (home && !domestic) flags.push('international');
     const homePrice = home ? convert(offer.price, offer.currency, home.currency) : null;
+    // RRP for the deal maths: the listing's own catalogue product, else the query's.
+    const entry = product ?? findMsrp(offer.title) ?? queryMsrp;
+    const deal = home ? offerDeal({ ...offer, flags }, msrpIn(entry, home.currency), { home, overrides: shippingOverrides }) : null;
     results.push({
       retailerId: r.id, retailerName: r.name, tier: r.tier, region: r.region,
       title: offer.title, url: new URL(offer.url).href, imageUrl: offer.imageUrl,
@@ -100,6 +106,9 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
       // Estimated total in the home currency incl. destination sales tax (domestic
       // retailers only; international orders add shipping + import fees instead).
       estTotalHome: domestic && homePrice != null ? Math.round(homePrice * (1 + home.salesTaxRate) * 100) / 100 : null,
+      productId: entry?.id ?? productIdForTitle(offer.title),
+      // Delivered-cost estimate and deal score (see deals.js); all figures are estimates.
+      deal,
       sortValue: convert(offer.price, offer.currency, 'GBP'),
     });
   }
@@ -109,8 +118,11 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
   // Best = cheapest among the closest title matches, so a cheaper but different
   // kit doesn't win; still prefers in-stock, non-suspicious, domestic offers.
   const top = Math.max(0, ...results.map((o) => o.closeness));
-  const eligible = (o) => o.inStock === true && !o.flags.includes('suspicious') && o.closeness >= top - 0.15;
-  const best = results.find((o) => eligible(o) && o.domestic) ?? results.find(eligible) ?? null;
+  const eligible = (o) => o.inStock === true && !o.flags.includes('suspicious') && (product || o.closeness >= top - 0.15);
+  // Among those, the lowest estimated delivered total (price + shipping + tax/duty) wins.
+  const byTotal = (a, b) => (a.deal?.total ?? Infinity) - (b.deal?.total ?? Infinity) || a.sortValue - b.sortValue;
+  const pool = results.filter((o) => eligible(o) && o.domestic);
+  const best = (pool.length ? pool : results.filter(eligible)).sort(byTotal)[0] ?? null;
 
   const order = new Map(retailers.map((r, i) => [r.id, i]));
   statuses.sort((a, b) => order.get(a.id) - order.get(b.id));
@@ -121,12 +133,12 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
     best: best ? (({ sortValue, ...o }) => o)(best) : null,
     retailers: statuses,
     msrp: queryMsrp ? {
-      name: queryMsrp.name, GBP: queryMsrp.GBP, USD: queryMsrp.USD, EUR: queryMsrp.EUR,
+      id: queryMsrp.id, name: queryMsrp.name, conf: queryMsrp.conf, GBP: queryMsrp.GBP, USD: queryMsrp.USD, EUR: queryMsrp.EUR,
       inCurrency: currency === 'native' ? null : msrpIn(queryMsrp, currency),
       approximate: true, source: queryMsrp.source,
     } : null,
     filtered: dropped,
-    didYouMean: didYouMeanFor(query, trustedTitles),
+    didYouMean: didYouMean ? didYouMeanFor(query, trustedTitles) : null,
     home: home ? { ...home } : null,
     disclaimer: DISCLAIMER,
   };

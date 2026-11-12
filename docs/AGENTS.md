@@ -43,6 +43,15 @@ through the **contracts** below. Re-use this workflow for future features.
 * `politeFetch` provides caching (default 15 min TTL), in-flight de-dupe,
   `Retry-After` handling, backoff, robots.txt checks and timeouts.
 * Tests inject a fake with `__setFetch()` and call `__reset()` between tests.
+* Known hosts: retailers (see `src/price/retailers.js`), `wahapedia.ru` (2/min, optional
+  runtime merge, `UNIT_DATA_REMOTE=1`), `raw.githubusercontent.com` (6/min, one at a time,
+  used only by `npm run import:units`, which regenerates `src/combat/data/units.generated.js`
+  from the BSData wh40k-10e files at a pinned commit).
+
+### Inbound limits (`src/server.js`)
+* `/api/prices/*` and other API routes: 30 req/min per IP (protects the outbound budget).
+* `/api/combat/*`: separate 300 req/min per IP bucket (no outbound I/O; the simulator
+  recalculates live on every change).
 
 ### Routers
 * `src/price/routes.js` exports `priceRouter` (Express Router) mounted at `/api/prices`.
@@ -51,5 +60,9 @@ through the **contracts** below. Re-use this workflow for future features.
 
 ### Frontend
 * Static files in `public/`, no build step, vanilla ES modules.
-* Shared look: `public/styles.css` (CSS custom properties, dark/light).
-* Each page includes the shared nav: Home · Price Finder · Combat Calculator.
+* Shared look: `public/styles.css` (design tokens + component classes, dark/light).
+  `public/ui.js` handles nav highlighting, the theme toggle and the mobile menu, and exports
+  `toast`, `el`, `fmtMoney`, `debounce`, `currentTheme`, `setTheme`.
+* Each page uses the shared skeleton: inline theme script in `<head>`, `styles.css`, `ui.js`,
+  `header.site` nav (Home · Deal Finder · Damage Simulator + `.theme-toggle`), `.page-head`, `footer.site`.
+* `test/ui.test.js` asserts every contract class/token exists; extend it when adding to the contract.

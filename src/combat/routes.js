@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getUnits, dataSourceStatus } from './dataSource.js';
-import { BadRequest, buildSimulation as build, unitById, listUnits, RULES_VERSION } from './service.js';
+import { BadRequest, buildSimulation as build, unitById, listUnits, listFactions, RULES_VERSION } from './service.js';
+import { DATA_SOURCES } from './data/catalog.js';
 import { simulate } from './engine.js';
 
 export const combatRouter = Router();
@@ -12,7 +13,13 @@ export const buildSimulation = (body) => build(body, getUnits());
 
 combatRouter.get('/units', (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 80) : '';
-  res.json({ units: listUnits(getUnits(), q), source: dataSourceStatus() });
+  const faction = typeof req.query.faction === 'string' ? req.query.faction.slice(0, 80) : '';
+  const view = req.query.view === 'brief' ? 'brief' : 'full';
+  res.json({ units: listUnits(getUnits(), q, faction, { view }), source: dataSourceStatus() });
+});
+
+combatRouter.get('/factions', (_req, res) => {
+  res.json({ factions: listFactions(getUnits()), sources: DATA_SOURCES, source: dataSourceStatus() });
 });
 
 combatRouter.get('/units/:id', (req, res) => {

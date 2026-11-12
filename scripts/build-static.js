@@ -15,8 +15,10 @@ const out = path.resolve(process.argv[2] ?? path.join(root, '_site'));
 // Browser-safe modules only (no express, no node:*, no process.env).
 const LIB = [
   'combat/engine.js', 'combat/service.js', 'combat/data/units.js',
+  'combat/data/units.generated.js', 'combat/data/catalog.js',
   'price/rank.js', 'price/retailers.js', 'price/trust.js', 'price/match.js',
   'price/msrp.js', 'price/currency.js', 'price/location.js', 'price/watchlist.js',
+  'price/catalog.js', 'price/deals.js', 'price/cart.js', 'price/history.js', 'price/overview.js',
   'search/fuzzy.js', 'combat/unitSearch.js',
 ];
 
