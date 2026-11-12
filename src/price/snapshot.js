@@ -15,7 +15,7 @@
 //    three failures in a row stop it too;
 //  * offers not refreshed this run are carried over from the previous snapshot
 //    (marked `carried`, original fetchedAt) for up to CARRY_MAX_DAYS.
-import { RETAILERS } from './retailers.js';
+import { RETAILERS, blockedReason } from './retailers.js';
 import { CATALOG, productById } from './catalog.js';
 import { WATCHLIST } from './watchlist.js';
 import { HOME } from './location.js';
@@ -31,6 +31,10 @@ export const SNAPSHOT_VERSION = 2;
 export const CARRY_MAX_DAYS = 14;
 export const DEFAULTS = Object.freeze({ maxMinutes: 40, maxQueriesPerRetailer: 80, maxConsecutiveErrors: 3 });
 const STOP_CODES = new Set(['PAUSED', 'REFUSED', 'RATE_LIMITED', 'ROBOTS', 'REDIRECT']);
+// A store that answers with one of these does not want automated visitors: it is
+// recorded in the snapshot's `blockedStores` and every later refresh skips it.
+// (429 / 5xx are treated as temporary and only stop the current run.)
+const BLOCK_CODES = new Set(['REFUSED', 'PAUSED', 'ROBOTS']);
 
 /**
  * De-duplicated search queries: one per catalogue product (plus watchlist kits
@@ -66,9 +70,24 @@ export function planQueries({ previous = null, catalog = CATALOG, watchlist = WA
   return out.map(({ query, productId }) => ({ query, productId }));
 }
 
-/** Retailers a refresh searches: domestic to HOME and live. */
-export function snapshotRetailers(home = HOME) {
-  return RETAILERS.filter((r) => r.region === home.region && r.adapter?.live !== false);
+/** Retailers a refresh searches: domestic to HOME, live, and not blocked. */
+export function snapshotRetailers(home = HOME, blockedStores = null) {
+  return RETAILERS.filter((r) => r.region === home.region && r.adapter?.live !== false
+    && !blockedReason(r, blockedStores));
+}
+
+/**
+ * Stores that refused us, carried forward from the previous snapshot (even a
+ * sample-data fallback) plus any that refused during this run. Permanent: a
+ * store only comes off the list if someone deletes its entry or passes
+ * `retryBlocked` (CLI: --retry-blocked).
+ */
+export function mergeBlocked(previous, stores = [], { now = Date.now(), retryBlocked = false } = {}) {
+  const out = retryBlocked ? {} : { ...(previous?.blockedStores ?? {}) };
+  for (const s of stores) {
+    if (s.blocked && !out[s.id]) out[s.id] = { since: new Date(now).toISOString().slice(0, 10), reason: s.stoppedReason ?? s.error ?? 'Refused automated requests' };
+  }
+  return out;
 }
 
 /**
@@ -132,6 +151,7 @@ export async function collectLive({
         st.errors[msg] = (st.errors[msg] ?? 0) + 1;
         st.error = msg;
         if (STOP_CODES.has(res.error?.code)) st.stoppedReason = msg;
+        if (BLOCK_CODES.has(res.error?.code)) st.blocked = true;
         else if (streak >= maxConsecutiveErrors) st.stoppedReason = `Stopped after ${streak} failures in a row: ${msg}`;
         if (st.stoppedReason) log(`${r.name}: stopping (${st.stoppedReason})`);
       }
@@ -197,25 +217,35 @@ export async function buildSnapshot({ previous = null, demo = false, now = Date.
   const home = opts.home ?? HOME;
   // History from a demo snapshot must never mix with real prices.
   const prev = previous && !previous.demo ? previous : null;
-  const live = await collectLive({ previous: prev, log, clock: now, ...opts });
-  const liveIds = new Set((opts.retailers ?? snapshotRetailers(home)).map((r) => r.id));
+  const priorBlocked = mergeBlocked(previous, [], { retryBlocked: opts.retryBlocked });
+  for (const r of RETAILERS) {
+    const why = r.region === home.region && blockedReason(r, priorBlocked);
+    if (why) log(`${r.name}: skipped, avoided because it blocked us (${why})`);
+  }
+  const retailers = (opts.retailers ?? snapshotRetailers(home, priorBlocked)).filter((r) => !blockedReason(r, priorBlocked));
+  const live = await collectLive({ previous: prev, log, clock: now, ...opts, retailers });
+  const blockedStores = mergeBlocked({ blockedStores: priorBlocked }, live.stores, { now: now() });
+  for (const s of live.stores) if (s.blocked) log(`${s.name}: blocked us; it will be skipped by every future refresh`);
+  // Carry over only stores we still search: blocked stores' old offers are dropped.
+  const liveIds = new Set(retailers.filter((r) => !blockedReason(r, blockedStores)).map((r) => r.id));
   const carried = carryOver(prev, live.refreshed, { now: now(), liveIds });
   const offers = [...live.offers, ...carried];
   if (!live.offers.length && !carried.length) {
     const snap = buildDemoSnapshot({ now: now(), home });
     snap.fallbackReason = 'No live offers could be fetched during the last update; showing SAMPLE data, not real prices.';
     snap.liveDiagnostics = live.stores;
+    snap.blockedStores = blockedStores;
     return snap;
   }
   const t = new Date(now()).toISOString();
   const { history, lowest } = mergeHistory(prev ?? {}, bestPricesByProduct(live.offers, { home }), t);
   // Keep each store's last success from the previous snapshot if it failed now.
   const prevStores = new Map((prev?.retailers ?? []).map((s) => [s.id, s]));
-  const retailers = live.stores.map((s) => ({ ...s, lastOkAt: s.lastOkAt ?? prevStores.get(s.id)?.lastOkAt ?? null }));
+  const storeStatus = live.stores.map((s) => ({ ...s, lastOkAt: s.lastOkAt ?? prevStores.get(s.id)?.lastOkAt ?? null }));
   return {
     version: SNAPSHOT_VERSION, generatedAt: t, demo: false, fallbackReason: null,
     partial: live.partial, home, watchlist: WATCHLIST,
-    offers, retailers,
+    offers: offers.filter((o) => liveIds.has(o.retailerId)), retailers: storeStatus, blockedStores,
     queries: { ...live.stats, carried: carried.length },
     history, lowest, durationMs: live.durationMs,
   };

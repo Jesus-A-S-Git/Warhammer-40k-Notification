@@ -409,3 +409,70 @@ test('routes: catalog, demo overview and cart; cart validation', async () => {
     assert.ok(ok.total > 0 && Array.isArray(ok.plan));
   } finally { await new Promise((r) => server.close(r)); }
 });
+
+// ---- stores that block us are avoided entirely --------------------------------------------
+
+test('Discount Games Inc is avoided: never searched, offers dropped, shown as Avoided', async () => {
+  const dgi = getRetailer('discount-games-inc');
+  const { snapshotRetailers } = await import('../src/price/snapshot.js');
+  assert.ok(dgi.blocked, 'marked blocked in the retailer list');
+  assert.ok(!snapshotRetailers(HOME).some((r) => r.id === 'discount-games-inc'));
+  // Its offers in an existing snapshot (e.g. the one published before it was blocked) never show.
+  const t = new Date().toISOString();
+  const snap = { demo: false, generatedAt: t, offers: [
+    { retailerId: 'discount-games-inc', title: 'Combat Patrol: Necrons', price: 120, currency: 'USD', inStock: true,
+      url: 'https://www.discountgamesinc.com/cp-n', fetchedAt: t },
+    { retailerId: 'miniature-market', title: 'Combat Patrol: Necrons', price: 140, currency: 'USD', inStock: true,
+      url: 'https://www.miniaturemarket.com/cp-n', fetchedAt: t },
+  ] };
+  const ov = buildOverview(snap);
+  const cp = ov.products.find((p) => p.id === 'combat-patrol-necrons');
+  assert.deepEqual(cp.offers.map((o) => o.retailerId), ['miniature-market']);
+  const store = ov.stores.find((s) => s.id === 'discount-games-inc');
+  assert.equal(store.status, 'blocked');
+  assert.equal(store.blocked, true);
+  assert.equal(store.offers, 0);
+});
+
+test('a store that refuses us (403) is recorded and skipped by every later refresh', async () => {
+  const day = (d) => Date.UTC(2026, 10, d, 12);
+  const retailers = ['miniature-market', 'wargame-portal'].map(getRetailer);
+  const refused = () => Object.assign(new Error('HTTP 403'), { code: 'REFUSED' });
+  const run1 = fakeFactory((r, q) => {
+    if (r.id === 'wargame-portal') throw refused();
+    return q === 'Combat Patrol: Necrons'
+      ? [{ title: 'Combat Patrol: Necrons', price: 136, currency: 'USD', inStock: true, url: 'https://www.miniaturemarket.com/cp-n' }] : [];
+  });
+  const previous = { demo: false, offers: [
+    { retailerId: 'wargame-portal', productId: 'necron-warriors', title: 'Necron Warriors', price: 51, currency: 'USD',
+      inStock: true, url: 'https://wargameportal.com/nw', fetchedAt: new Date(day(10)).toISOString() },
+  ] };
+  const snap1 = await buildSnapshot({ previous, retailers, factory: run1.factory, now: () => day(12), log: () => {}, maxQueriesPerRetailer: 500 });
+  assert.equal(run1.calls.filter(([id]) => id === 'wargame-portal').length, 1, 'stopped on the first refusal');
+  assert.deepEqual(Object.keys(snap1.blockedStores), ['wargame-portal']);
+  assert.equal(snap1.blockedStores['wargame-portal'].since, '2026-11-12');
+  assert.ok(!snap1.offers.some((o) => o.retailerId === 'wargame-portal'), 'its old offers are not carried over');
+
+  // Next refresh: never contacted, still blocked.
+  const run2 = fakeFactory(() => []);
+  const snap2 = await buildSnapshot({ previous: snap1, retailers, factory: run2.factory, now: () => day(13), log: () => {}, maxQueriesPerRetailer: 500 });
+  assert.equal(run2.calls.filter(([id]) => id === 'wargame-portal').length, 0);
+  assert.deepEqual(snap2.blockedStores, snap1.blockedStores);
+  assert.equal(buildOverview(snap2).stores.find((s) => s.id === 'wargame-portal').status, 'blocked');
+
+  // The block survives a sample-data fallback, and --retry-blocked clears it.
+  const fallback = await buildSnapshot({ previous: { ...snap1, offers: [] }, retailers: [getRetailer('miniature-market')],
+    factory: fakeFactory(() => { throw new Error('down'); }).factory, log: () => {} });
+  assert.equal(fallback.demo, true);
+  assert.ok(fallback.blockedStores['wargame-portal']);
+  const run3 = fakeFactory(() => []);
+  await buildSnapshot({ previous: fallback, retailers, factory: run3.factory, log: () => {}, retryBlocked: true, maxQueriesPerRetailer: 2 });
+  assert.ok(run3.calls.some(([id]) => id === 'wargame-portal'));
+});
+
+test('a temporary rate limit (429) stops the run but does not block the store', async () => {
+  const retailers = [getRetailer('wargame-portal')];
+  const { factory } = fakeFactory(() => { throw Object.assign(new Error('429'), { code: 'RATE_LIMITED' }); });
+  const snap = await buildSnapshot({ retailers, factory, log: () => {} });
+  assert.deepEqual(snap.blockedStores, {});
+});
