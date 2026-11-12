@@ -106,7 +106,8 @@ async function getFollow(url, accept) {
 }
 
 const report = [];
-for (const r of [...RETAILERS.filter((x) => x.region === 'US' || x.id === 'element-games'), ...CANDIDATES]) {
+// Stores that blocked us are never contacted again, not even by this probe.
+for (const r of [...RETAILERS.filter((x) => !x.blocked && (x.region === 'US' || x.id === 'element-games')), ...CANDIDATES]) {
   const row = { id: r.id, name: r.name };
   const cfg = r.adapter ?? {};
   const configured = cfg.type === 'shopify'

@@ -299,12 +299,12 @@ function renderStatus() {
     box.append(el('div', { class: 'callout info' }, 'This refresh covered part of the catalogue (polite per-store limits). '
       + 'Products not re-checked keep their recent price, marked “Older price”; the next refresh continues where this one stopped.'));
   }
-  const failing = ov.stores.filter((x) => x.status === 'error' || x.stoppedReason);
+  const failing = ov.stores.filter((x) => !x.blocked && (x.status === 'error' || x.stoppedReason));
   if (failing.length && !s.demo) {
     box.append(el('div', { class: 'callout warn' }, el('strong', {}, 'Some stores did not answer: '),
       failing.map((x) => `${x.name} (${x.stoppedReason ?? x.reason ?? 'error'}; last success ${ago(x.lastOkAt)})`).join('; ')));
   }
-  const live = ov.stores.filter((x) => x.status !== 'skipped');
+  const live = ov.stores.filter((x) => x.status !== 'skipped' && !x.blocked);
   const ok = live.filter((x) => x.status === 'ok').length;
   const priced = ov.products.filter((p) => p.best).length;
   const top = ov.products.find((p) => p.id === ov.topDeals[0]);
@@ -605,7 +605,7 @@ function cartPlan() {
       '. Washington taxes shipping charges too. Adjust the shipping rules on the left if you know better.'));
 }
 function shippingEditor() {
-  const stores = (state.overview?.stores ?? []).filter((s) => s.status !== 'skipped');
+  const stores = (state.overview?.stores ?? []).filter((s) => s.status !== 'skipped' && !s.blocked);
   if (!stores.length) return null;
   const rows = stores.map((s) => {
     const o = state.ship[s.id] ?? {};
@@ -721,8 +721,8 @@ async function renderStores() {
       el('th', { class: 'opt' }, 'Shipping to you (est.)'))),
     el('tbody', {}, stores.map((s) => el('tr', {},
       el('td', {}, s.name, s.caution ? el('span', { class: 'cell-sub text-warn' }, s.caution) : null),
-      el('td', {}, el('span', { class: `badge ${s.status === 'ok' ? 'good' : s.status === 'error' ? 'bad' : 'warn'}`, title: s.reason ?? '' },
-        s.status === 'ok' ? 'OK' : s.status === 'error' ? 'Failed' : s.status === 'skipped' ? 'Not searched' : 'Unknown'),
+      el('td', {}, el('span', { class: `badge ${s.status === 'ok' ? 'good' : s.status === 'error' || s.blocked ? 'bad' : 'warn'}`, title: s.reason ?? '' },
+        s.blocked ? 'Avoided' : s.status === 'ok' ? 'OK' : s.status === 'error' ? 'Failed' : s.status === 'skipped' ? 'Not searched' : 'Unknown'),
       s.reason || s.stoppedReason ? el('span', { class: 'cell-sub' }, s.stoppedReason ?? s.reason) : null),
       el('td', {}, ago(s.lastOkAt), s.stale ? el('span', { class: 'cell-sub text-warn' }, 'stale') : null),
       el('td', { class: 'num' }, String(s.offers)),
@@ -786,7 +786,7 @@ function setupFilters() {
   fill($('f-cat'), ...state.catalog.categories.map((c) => el('button', { type: 'button', class: 'chip', 'data-cat': c.id,
     'aria-pressed': String((f.cats ?? []).includes(c.id)), title: c.blurb,
     onclick: (e) => { const b = e.currentTarget; b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); renderBrowse(); } }, c.name)));
-  const stores = (state.overview?.stores ?? []).filter((s) => s.status !== 'skipped');
+  const stores = (state.overview?.stores ?? []).filter((s) => s.status !== 'skipped' && !s.blocked);
   $('f-store').append(...stores.map((s) => el('option', { value: s.id }, s.name)));
   if (f.faction) fac.value = f.faction;
   if (f.max) $('f-max').value = f.max;

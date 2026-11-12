@@ -9,7 +9,9 @@
 // snapshot falls back to clearly-labelled SAMPLE data so the page still works.
 //
 // Usage: node scripts/snapshot-prices.js [outFile] [--demo] [--previous file]
-//          [--max-minutes N] [--max-queries N]
+//          [--max-minutes N] [--max-queries N] [--retry-blocked]
+// Stores that refuse us (HTTP 403 / robots.txt) are recorded in the snapshot's
+// `blockedStores` and skipped by every later refresh; --retry-blocked clears that list.
 // The previous snapshot defaults to outFile itself when it exists (the Pages
 // workflow downloads the published one there first).
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
@@ -32,7 +34,7 @@ try {
 } catch { console.log('No previous snapshot: starting fresh history.'); }
 
 const snap = await buildSnapshot({
-  previous, demo,
+  previous, demo, retryBlocked: args.includes('--retry-blocked'),
   maxMinutes: num(opt('--max-minutes'), DEFAULTS.maxMinutes),
   maxQueriesPerRetailer: num(opt('--max-queries'), DEFAULTS.maxQueriesPerRetailer),
   log: (m) => console.log(m),

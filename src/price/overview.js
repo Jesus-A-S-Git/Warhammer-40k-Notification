@@ -3,7 +3,7 @@
 // the API (/api/prices/overview) and the static site (computed in the browser).
 // Every snapshot offer goes through the full trust filter again here.
 import { CATALOG, CATEGORIES, FACTIONS, RRP_AS_OF, factionById } from './catalog.js';
-import { RETAILERS, getRetailer } from './retailers.js';
+import { RETAILERS, getRetailer, blockedReason } from './retailers.js';
 import { checkOffer } from './trust.js';
 import { productIdForTitle, msrpIn } from './msrp.js';
 import { rankOffers, DISCLAIMER } from './rank.js';
@@ -46,6 +46,7 @@ export function buildOverview(snap, { now = Date.now(), home = HOME, shippingOve
     const o = { ...raw };
     if (!checkOffer(o).ok) { rejected++; continue; }
     const r = getRetailer(o.retailerId);
+    if (blockedReason(r, snap?.blockedStores)) continue; // avoided stores never appear in results
     if (wantRegion && r.region !== wantRegion) continue;
     const id = productIdForTitle(o.title);
     if (!id) { unmatched++; continue; }
@@ -104,15 +105,17 @@ export function buildOverview(snap, { now = Date.now(), home = HOME, shippingOve
   const stores = RETAILERS.filter((r) => !wantRegion || r.region === wantRegion).map((r) => {
     const s = statusById.get(r.id) ?? {};
     const d = diag.get(r.id) ?? {};
+    const blocked = blockedReason(r, snap?.blockedStores);
     const lastOkAt = s.lastOkAt ?? latestOffer.get(r.id) ?? null;
     const age = hoursSince(lastOkAt, now);
     return {
       id: r.id, name: r.name, tier: r.tier, caution: r.caution ?? null,
-      status: s.status ?? (r.adapter?.live === false ? 'skipped' : 'unknown'),
-      reason: s.error ?? s.reason ?? (r.adapter?.live === false ? r.adapter.liveDisabledReason ?? 'Live lookups disabled' : null),
+      status: blocked ? 'blocked' : s.status ?? (r.adapter?.live === false ? 'skipped' : 'unknown'),
+      reason: blocked ?? s.error ?? s.reason ?? (r.adapter?.live === false ? r.adapter.liveDisabledReason ?? 'Live lookups disabled' : null),
+      blocked: Boolean(blocked),
       lastOkAt, ageHours: age == null ? null : Math.round(age * 10) / 10,
       stale: age != null && age > STALE_AFTER_HOURS,
-      offers: offerCount.get(r.id) ?? 0,
+      offers: blocked ? 0 : offerCount.get(r.id) ?? 0,
       searches: d.ok ?? s.ok ?? null, failures: d.failed ?? (d.errors ? Object.values(d.errors).reduce((a, b) => a + b, 0) : null),
       stoppedReason: s.stoppedReason ?? null,
       shipping: { ...(SHIPPING_US[r.id] ?? REGION_DEFAULTS[r.region]) },

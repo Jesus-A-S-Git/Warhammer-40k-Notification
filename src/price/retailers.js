@@ -109,12 +109,16 @@ export const RETAILERS = [
     region: 'US', country: 'US', currency: 'USD', tier: 'authorized',
     notes: 'Store run by Frontline Gaming, a long-standing US tournament organiser and stockist.',
     shippingNote: 'US shipping.',
-    // Its site protection answered HTTP 403 after ~40 searches at 6/min during the
-    // first full refresh (Nov 2026), so this store gets a slower budget of its own.
+    // Its site protection answered HTTP 403 after ~40 searches during the first full
+    // refresh (Nov 11 2026), then refused the very first request of the next one
+    // (Nov 12 2026). It does not want automated visitors, so we avoid it entirely:
+    // never contacted, and any offers from it are dropped from published prices.
+    blocked: { since: '2026-11-12', reason: 'Refuses automated requests (HTTP 403), so we no longer contact this store' },
     rateLimit: { requestsPerMinute: 2 },
     // Lightspeed store, not Shopify (suggest.json redirects). Search form found by the
     // probe; results pages have no JSON-LD, so product cards are read directly.
-    adapter: { type: 'listing', searchUrl: 'https://www.discountgamesinc.com/search/?q={q}',
+    adapter: { type: 'listing', live: false, liveDisabledReason: 'Refuses automated requests (HTTP 403)',
+      searchUrl: 'https://www.discountgamesinc.com/search/?q={q}',
       cardMarker: 'class="product-info"', linkClass: 'product-title', priceClass: 'price' },
   },
   {
@@ -146,6 +150,18 @@ export const REGIONS = ['UK', 'US', 'EU'];
 const byId = new Map(RETAILERS.map((r) => [r.id, r]));
 export function getRetailer(id) { return byId.get(id); }
 
+/**
+ * Why a store is avoided entirely (never contacted, offers dropped), or null.
+ * `blockedStores` is the snapshot's record of stores that refused us at runtime:
+ * { [retailerId]: { since, reason } }.
+ */
+export function blockedReason(r, blockedStores = null) {
+  if (!r) return null;
+  if (r.blocked) return r.blocked.reason ?? 'Store refuses automated requests';
+  const b = blockedStores?.[r.id];
+  return b ? (b.reason ?? 'Store refused automated requests') : null;
+}
+
 /** Public view (no adapter internals) for /api/prices/retailers. */
 export function publicRetailer(r) {
   return {
@@ -153,6 +169,7 @@ export function publicRetailer(r) {
     currency: r.currency, tier: r.tier, notes: r.notes, shippingNote: r.shippingNote,
     liveLookups: r.adapter?.live !== false,
     liveDisabledReason: r.adapter?.liveDisabledReason ?? null,
+    blocked: r.blocked ? { ...r.blocked } : null,
     caution: r.caution ?? null,
   };
 }

@@ -62,7 +62,7 @@ npm run preview:static     # http://localhost:4000/Warhammer-40k-Notification/
 | Store | Status | How it's read |
 |---|---|---|
 | Miniature Market | ✅ live | search results page (`listing` adapter) |
-| Discount Games Inc (Frontline Gaming) | ✅ live | search results page (`listing` adapter) |
+| Discount Games Inc (Frontline Gaming) | ⛔ avoided | refused automated requests (HTTP 403) on Nov 11 and Nov 12 2026, so it is never contacted and its prices are not shown |
 | Wargame Portal | ✅ live (mixed shipping reviews, shown on the site) | Shopify `suggest.json` |
 | Noble Knight Games | ⏭ skipped: robots.txt disallows automated search | n/a |
 | GameNerdz | ✖ not added: robots.txt disallows automated search | n/a |
@@ -78,8 +78,9 @@ Every outbound request goes through `src/shared/httpClient.js` → `politeFetch(
 
 | Safeguard | Detail |
 |---|---|
-| Per-host token bucket | Retailers 6 req/min (Discount Games Inc 2 req/min: its site protection refused us at 6/min), Wahapedia 2 req/min, default ≤ 10; 1 concurrent; bounded queue (fails fast when busy) |
+| Per-host token bucket | Retailers 6 req/min, Wahapedia 2 req/min, default ≤ 10; 1 concurrent; bounded queue (fails fast when busy) |
 | Circuit breaker | A store that answers HTTP 403, or keeps rate-limiting us, is paused for an hour: no further requests are sent to it |
+| Blocked stores | A store that refuses us during a price refresh (HTTP 403, or robots.txt disallows us) is recorded in the snapshot's `blockedStores` and skipped by every later refresh; its prices are dropped from the site. Temporary rate limits (429) don't count. To give a store another chance, run the snapshot with `--retry-blocked` |
 | Caching | Search results cached ~30 min, unit data 24 h; identical in-flight requests share one fetch |
 | Back-off | Honours `429`/`503` `Retry-After`, exponential backoff, bounded retries |
 | robots.txt | RFC 9309 rules checked per host (unreachable/5xx robots.txt ⇒ treated as disallowed) |
