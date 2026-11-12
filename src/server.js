@@ -17,7 +17,10 @@ export function createApp() {
   if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 
   // Inbound limit: protects our outbound budget from a single noisy client.
+  // Combat endpoints never touch the network (pure dice maths), so they get a
+  // separate, much larger bucket: live recalculation fires a request per change.
   const INBOUND_RPM = 30;
+  const COMBAT_RPM = 300;
   const MAX_CLIENTS = 10_000;
   const clients = new Map(); // ip -> { tokens, last }
   const prune = setInterval(() => {
@@ -26,15 +29,17 @@ export function createApp() {
   }, 60_000);
   prune.unref();
   app.use('/api', (req, res, next) => {
-    const ip = req.ip || 'unknown';
+    const combat = req.path.startsWith('/combat/');
+    const rpm = combat ? COMBAT_RPM : INBOUND_RPM;
+    const ip = (combat ? 'combat:' : '') + (req.ip || 'unknown');
     const now = Date.now();
     let l = clients.get(ip);
     if (!l) {
       if (clients.size >= MAX_CLIENTS) clients.delete(clients.keys().next().value);
-      l = { tokens: INBOUND_RPM, last: now };
+      l = { tokens: rpm, last: now };
     } else {
       clients.delete(ip); // move to end (LRU order)
-      l.tokens = Math.min(INBOUND_RPM, l.tokens + ((now - l.last) / 60_000) * INBOUND_RPM);
+      l.tokens = Math.min(rpm, l.tokens + ((now - l.last) / 60_000) * rpm);
       l.last = now;
     }
     clients.set(ip, l);

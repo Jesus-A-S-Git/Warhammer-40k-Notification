@@ -1,5 +1,7 @@
-// Unit data source: curated seed datasheets, optionally extended with a
-// community CSV export (Wahapedia's 10th-edition export).
+// Unit data source: the committed catalogue (curated seed datasheets + every
+// datasheet imported from BSData by scripts/import-units.js, see
+// data/catalog.js), optionally extended at runtime with a community CSV export
+// (Wahapedia's 10th-edition export).
 //
 // Remote import is OFF by default; enable with UNIT_DATA_REMOTE=1.
 // Wahapedia asks people not to hammer the site, so:
@@ -10,7 +12,7 @@
 //     meanwhile, and falls back to seed data on any failure.
 
 import { politeFetch, setHostLimit } from '../shared/httpClient.js';
-import { UNITS } from './data/units.js';
+import { ALL_UNITS as UNITS } from './data/catalog.js';
 import { keywordError } from './engine.js';
 
 export const REMOTE_HOST = 'wahapedia.ru';
@@ -19,7 +21,7 @@ export const REMOTE_LIMIT = { requestsPerMinute: 2, burst: 1, maxConcurrent: 1 }
 const DAY_MS = 24 * 3600_000;
 const FILES = ['Factions', 'Datasheets', 'Datasheets_models', 'Datasheets_wargear'];
 
-const state = { units: UNITS, loadedAt: 0, loading: null, lastError: null, source: 'seed' };
+const state = { units: UNITS, loadedAt: 0, loading: null, lastError: null, source: 'catalog' };
 
 export function remoteEnabled() { return process.env.UNIT_DATA_REMOTE === '1'; }
 
@@ -38,7 +40,7 @@ export function dataSourceStatus() {
 
 /** Tests only. */
 export function __resetDataSource() {
-  Object.assign(state, { units: UNITS, loadedAt: 0, loading: null, lastError: null, source: 'seed' });
+  Object.assign(state, { units: UNITS, loadedAt: 0, loading: null, lastError: null, source: 'catalog' });
 }
 
 /**
@@ -60,11 +62,11 @@ export function refreshRemote({ hostLimit = REMOTE_LIMIT } = {}) {
       const imported = normalizeWahapedia(tables);
       if (!imported.length) throw new Error('Remote export contained no usable datasheets');
       state.units = mergeUnits(UNITS, imported);
-      state.source = 'seed+remote';
+      state.source = 'catalog+remote';
       state.lastError = null;
     } catch (err) {
       state.units = UNITS;
-      state.source = 'seed';
+      state.source = 'catalog';
       state.lastError = String(err?.message || err);
     } finally {
       state.loadedAt = Date.now();

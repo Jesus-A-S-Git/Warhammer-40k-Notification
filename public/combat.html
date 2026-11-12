@@ -1,165 +1,354 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Combat Calculator · 40k Toolkit</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Damage Simulator · 40k Toolkit</title>
+  <meta name="description" content="Warhammer 40,000 10th edition damage simulator: pick any attacker and defender datasheet, toggle rules and modifiers, and see expected damage and the full kill distribution.">
+  <meta name="color-scheme" content="dark light">
+  <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
   <link rel="stylesheet" href="styles.css">
+  <script type="module" src="ui.js"></script>
   <style>
-    .panel h2 { margin: 0 0 12px; font-size: 1.15rem; }
-    .row { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-bottom: 12px; }
-    .checks { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0 12px; }
-    .checks label, label.inline { display: inline-flex; gap: 6px; align-items: center; color: var(--text); font-size: .9rem; margin: 0; }
-    .checks input, label.inline input { width: auto; }
-    fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; min-width: 0; }
-    legend { font-size: .85rem; color: var(--muted); padding: 0 4px; }
-    .weapon { display: grid; grid-template-columns: auto 1fr 74px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
-    .weapon:last-child { border-bottom: 0; }
-    .weapon .name { font-weight: 600; font-size: .92rem; }
-    .weapon .stats { font-size: .78rem; color: var(--muted); }
-    .weapon input[type=number] { padding: 4px 6px; }
-    .profile { font-size: .85rem; color: var(--muted); margin: 0 0 12px; font-variant-numeric: tabular-nums; }
-    .actions { display: flex; gap: 12px; align-items: center; margin: var(--gap) 0; flex-wrap: wrap; }
-    .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 20px; }
-    .tile { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
-    .tile .v { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .tile .k { font-size: .8rem; color: var(--muted); }
-    .funnel { display: grid; gap: 6px; margin-bottom: 20px; }
-    .funnel .step { display: grid; grid-template-columns: 120px 1fr 60px; gap: 10px; align-items: center; font-size: .9rem; }
-    .funnel .track { height: 14px; }
-    .funnel .bar { height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; min-width: 2px; }
-    .chart svg { width: 100%; height: auto; display: block; }
-    .chart .bar { fill: var(--accent); }
-    .chart .bar:hover, .chart .bar:focus { opacity: .8; outline: none; }
-    .chart text { fill: var(--muted); font-size: 11px; }
-    .chart .grid { stroke: var(--border); stroke-width: 1; }
-    .tooltip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: .8rem; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
-    h3 { font-size: 1rem; margin: 20px 0 8px; }
-    .hidden { display: none !important; }
-    .hint { font-size: .85rem; color: var(--muted); margin: 6px 0 0; }
-    .hint[hidden] { display: none; }
-    button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
-    details summary { cursor: pointer; color: var(--muted); font-size: .85rem; margin: 6px 0; }
-    @media (max-width: 520px) { .funnel .step { grid-template-columns: 90px 1fr 52px; } }
+    /* Page-local layout for the simulator (shared tokens/classes come from styles.css). */
+    .duel { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; }
+    .duel > .swap-col { display: flex; align-items: center; justify-content: center; padding-top: 56px; }
+    @media (max-width: 860px) {
+      .duel { grid-template-columns: minmax(0, 1fr); }
+      .duel > .swap-col { padding-top: 0; }
+      .duel > .swap-col .btn svg { transform: rotate(90deg); }
+    }
+    .side-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .side-head .card-title { margin: 0; }
+    .side-tag { font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .statline { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; text-align: center; }
+    .statline > div { padding: 6px 2px; border-right: 1px solid var(--border); min-width: 0; }
+    .statline > div:last-child { border-right: 0; }
+    .statline .k { font-size: .66rem; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+    .statline .v { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 1.05rem; }
+    .statline .v.dim { color: var(--muted); font-weight: 500; }
+    .kw-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .weapons { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; padding-right: 2px; }
+    .weapon { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: center;
+      padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+    .weapon.on { border-color: var(--accent); background: var(--accent-soft); }
+    .weapon > input[type=checkbox] { width: 18px; height: 18px; margin: 0; }
+    .weapon .w-name { font-weight: 600; cursor: pointer; overflow-wrap: anywhere; }
+    .weapon .w-stats { grid-column: 2 / 4; font-size: .8rem; color: var(--muted); font-family: var(--font-mono); overflow-wrap: anywhere; }
+    .weapon .w-kw { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 4px; }
+    .weapon .stepper { width: 112px; }
+    .weapon .stepper > input { min-width: 0; }
+    .weapon .w-models { display: flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--muted); }
+    details.mods { border-top: 1px solid var(--border); padding: 10px 0 4px; }
+    details.mods:first-of-type { border-top: 0; padding-top: 0; }
+    details.mods > summary { cursor: pointer; font-weight: 650; list-style: none; display: flex; align-items: center; gap: 8px; padding: 4px 0 8px; }
+    details.mods > summary::-webkit-details-marker { display: none; }
+    details.mods > summary::before { content: '▸'; color: var(--muted); transition: transform .15s; display: inline-block; }
+    details.mods[open] > summary::before { transform: rotate(90deg); }
+    details.mods > summary .badge { margin-left: auto; }
+    .mod-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; margin: 6px 0; }
+    .mod-row > span { font-size: .88rem; }
+    .mod-row .seg > button { padding-left: 10px; padding-right: 10px; }
+    .funnel { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; }
+    .funnel .fl { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+    .funnel .fv { font-variant-numeric: tabular-nums; font-weight: 650; text-align: right; min-width: 3.5em; }
+    .chart-wrap { position: relative; }
+    .chart-tip { position: absolute; top: 0; pointer-events: none; padding: 4px 8px; font-size: .8rem; border-radius: 4px;
+      background: var(--surface); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); white-space: nowrap; }
+    .chart g[data-k]:focus { outline: none; }
+    .chart g[data-k]:focus rect.series, .chart g[data-k]:hover rect.series { opacity: .8; }
+    .result-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .result-head h2 { margin: 0; font-size: 1.1rem; }
+    .pins { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+    .pin .pin-title { font-weight: 650; font-size: .92rem; overflow-wrap: anywhere; }
+    .pin dl { display: grid; grid-template-columns: auto auto; gap: 2px 12px; margin: 8px 0; font-size: .85rem; }
+    .pin dt { color: var(--muted); }
+    .pin dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .pin dd.win { color: var(--good); }
+    .custom-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
+    .custom-grid .field.wide { grid-column: 1 / -1; }
+    .opt-note { font-size: .78rem; color: var(--muted); }
+    .busy-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); opacity: 0; transition: opacity .2s; }
+    [aria-busy="true"] .busy-dot { opacity: 1; animation: pulse 1s infinite; }
+    @keyframes pulse { 50% { opacity: .3; } }
+    .ac-item .faction-dot { margin-right: 2px; }
+    .ac-empty { padding: 8px 10px; color: var(--muted); font-size: .88rem; }
+    #results[hidden] { display: none; }
+    #a-type { display: flex; }
+    #a-type > button { flex: 1 1 0; white-space: nowrap; }
+    @media (max-width: 640px) {
+      #tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #tiles .stat-value { font-size: 1.35rem; }
+      .weapon .stepper { width: 100px; }
+      .weapon .w-stats, .weapon .w-kw { grid-column: 1 / -1; }
+    }
+    /* Phones/tablets: results right under the unit pickers, modifiers after them. */
+    @media (max-width: 900px) { .layout-sidebar > aside { order: 2; } }
   </style>
 </head>
 <body>
-  <header class="site"><nav>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site"><nav aria-label="Main">
     <a class="brand" href="./">40k Toolkit</a>
     <a href="./">Home</a>
-    <a href="prices.html">Price Finder</a>
-    <a href="combat.html" aria-current="page">Combat Calculator</a>
+    <a href="prices.html">Deal Finder</a>
+    <a href="combat.html">Damage Simulator</a>
+    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme"></button>
   </nav></header>
-  <main>
-    <h1>Combat Calculator</h1>
-    <p class="lede">Pick who shoots (or fights) and who gets hit. The engine applies the 10th edition attack sequence and works out the exact odds of each outcome.</p>
 
-    <form id="form" novalidate>
-      <div class="grid">
-        <section class="card panel" aria-labelledby="att-h">
-          <h2 id="att-h">Attacker</h2>
-          <div class="row">
-            <div><label for="a-search">Search units</label><input id="a-search" type="search" placeholder="e.g. intercessors, termies, boyz" autocomplete="off" spellcheck="false" aria-describedby="a-hint">
-              <p class="hint" id="a-hint" role="status" hidden></p></div>
-            <div><label for="a-unit">Unit</label><select id="a-unit"></select></div>
-          </div>
-          <div class="row">
-            <div><label for="a-models">Models</label><input id="a-models" type="number" min="1" max="30" value="10"></div>
-          </div>
-          <div id="a-custom" class="hidden">
-            <fieldset><legend>Custom weapon</legend>
-              <div class="row">
-                <div><label for="cw-name">Name</label><input id="cw-name" value="Custom weapon"></div>
-                <div><label for="cw-type">Type</label><select id="cw-type"><option value="ranged">Ranged</option><option value="melee">Melee</option></select></div>
-              </div>
-              <div class="row">
-                <div><label for="cw-A">A</label><input id="cw-A" value="2"></div>
-                <div><label for="cw-skill">BS/WS</label><input id="cw-skill" type="number" min="2" max="6" value="3"></div>
-                <div><label for="cw-S">S</label><input id="cw-S" type="number" min="1" max="30" value="4"></div>
-                <div><label for="cw-AP">AP</label><input id="cw-AP" type="number" min="-6" max="0" value="-1"></div>
-                <div><label for="cw-D">D</label><input id="cw-D" value="1"></div>
-              </div>
-              <label for="cw-kw">Keywords (comma separated)</label><input id="cw-kw" placeholder="Lethal Hits, Sustained Hits 1, Anti-Infantry 4+">
-            </fieldset>
-          </div>
-          <fieldset id="a-weapons-fs"><legend>Weapons (tick and set how many models fire each)</legend><div id="a-weapons"></div></fieldset>
-          <fieldset><legend>Situation &amp; modifiers</legend>
-            <div class="checks">
-              <label><input type="checkbox" id="m-stationary"> Remained stationary</label>
-              <label><input type="checkbox" id="m-half"> Within half range</label>
-              <label><input type="checkbox" id="m-charged"> Charged</label>
-              <label><input type="checkbox" id="m-lethal"> Lethal Hits</label>
-              <label><input type="checkbox" id="m-dev"> Devastating Wounds</label>
-              <label><input type="checkbox" id="m-ignorecover"> Ignores Cover</label>
-            </div>
-            <div class="row">
-              <div><label for="m-rh">Re-roll hits</label><select id="m-rh"><option value="none">No</option><option value="ones">Ones</option><option value="failed">Failed</option></select></div>
-              <div><label for="m-rw">Re-roll wounds</label><select id="m-rw"><option value="none">No</option><option value="ones">Ones</option><option value="failed">Failed</option></select></div>
-              <div><label for="m-hit">Hit modifier</label><select id="m-hit"><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option></select></div>
-              <div><label for="m-wound">Wound modifier</label><select id="m-wound"><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option></select></div>
-              <div><label for="m-sus">Sustained Hits</label><select id="m-sus"><option value="">Weapon's</option><option>1</option><option>2</option><option>3</option><option>D3</option></select></div>
-              <div><label for="m-crit">Critical hit on</label><select id="m-crit"><option value="6">6</option><option value="5">5+</option></select></div>
-            </div>
-          </fieldset>
-        </section>
+  <main id="main">
+    <div class="page-head">
+      <h1>Damage Simulator</h1>
+      <p class="lede">Pick an attacker and a target from <span id="unit-count">all</span> 10th-edition datasheets, toggle the rules in play, and see the expected damage plus the full probability of each outcome. Results update as you change anything.</p>
+    </div>
 
-        <section class="card panel" aria-labelledby="def-h">
-          <h2 id="def-h">Defender</h2>
-          <div class="row">
-            <div><label for="d-search">Search units</label><input id="d-search" type="search" placeholder="e.g. terminators, gaunts" autocomplete="off" spellcheck="false" aria-describedby="d-hint">
-              <p class="hint" id="d-hint" role="status" hidden></p></div>
-            <div><label for="d-unit">Unit</label><select id="d-unit"></select></div>
+    <div class="stack">
+      <section class="duel" aria-label="Attacker and defender">
+        <!-- Attacker -->
+        <div class="card" id="attacker-card">
+          <div class="side-head">
+            <span class="badge accent side-tag">Attacker</span>
+            <h2 class="card-title" id="a-title">Choose a unit</h2>
           </div>
-          <div class="row">
-            <div><label for="d-models">Models</label><input id="d-models" type="number" min="1" max="30" value="5"></div>
-          </div>
-          <p class="profile" id="d-profile" aria-live="polite"></p>
-          <div id="d-custom" class="hidden">
-            <fieldset><legend>Custom profile</legend>
-              <div class="row">
-                <div><label for="cd-T">T</label><input id="cd-T" type="number" min="1" max="30" value="4"></div>
-                <div><label for="cd-Sv">Sv (7 = none)</label><input id="cd-Sv" type="number" min="2" max="7" value="3"></div>
-                <div><label for="cd-inv">Invuln</label><input id="cd-inv" type="number" min="2" max="6" placeholder="none"></div>
-                <div><label for="cd-W">W</label><input id="cd-W" type="number" min="1" max="40" value="2"></div>
-                <div><label for="cd-fnp">FNP</label><input id="cd-fnp" type="number" min="2" max="6" placeholder="none"></div>
+          <div class="stack tight">
+            <div class="field-row">
+              <div class="field">
+                <label for="a-faction">Faction</label>
+                <select id="a-faction"><option value="">All factions</option></select>
               </div>
-              <label for="cd-kw">Keywords (for Anti-X)</label><input id="cd-kw" value="Infantry">
-            </fieldset>
+            </div>
+            <div class="chips" id="a-recent" aria-label="Recent attacker factions"></div>
+            <div class="field ac" id="a-ac">
+              <label for="a-search">Unit</label>
+              <input id="a-search" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
+                aria-controls="a-list" autocomplete="off" spellcheck="false" placeholder="Search units, e.g. hellblasters, termies, boyz">
+              <ul class="ac-list" id="a-list" role="listbox" aria-label="Attacker units" hidden></ul>
+            </div>
+            <div class="field-row">
+              <div class="field" style="flex:0 0 auto">
+                <label for="a-models">Models</label>
+                <div class="stepper"><button type="button" data-step="-1" aria-label="Fewer attacking models">−</button><input id="a-models" type="number" min="1" max="30" value="10" inputmode="numeric"><button type="button" data-step="1" aria-label="More attacking models">+</button></div>
+              </div>
+              <div class="field" style="flex:1 1 210px">
+                <span class="label">Weapons</span>
+                <div class="seg" id="a-type" role="group" aria-label="Weapon type">
+                  <button type="button" data-type="ranged" aria-pressed="true">Ranged</button>
+                  <button type="button" data-type="melee" aria-pressed="false">Melee</button>
+                </div>
+              </div>
+            </div>
+            <p class="hint" id="a-hint">Tick the weapons that fire; each can be fired by a different number of models.</p>
+            <div class="weapons" id="a-weapons" aria-live="polite"></div>
+            <div class="row tight">
+              <button type="button" class="btn secondary sm" id="a-add-custom">+ Custom weapon</button>
+              <span class="spacer"></span>
+              <span class="small muted" id="a-selected"></span>
+            </div>
+            <div id="a-custom-editor" class="card compact" hidden>
+              <div class="custom-grid">
+                <div class="field wide"><label for="cw-name">Weapon name</label><input id="cw-name" type="text" maxlength="60" value="Custom weapon"></div>
+                <div class="field"><label for="cw-type">Type</label><select id="cw-type"><option value="ranged">Ranged</option><option value="melee">Melee</option></select></div>
+                <div class="field"><label for="cw-A">A</label><input id="cw-A" type="text" value="2" maxlength="8"></div>
+                <div class="field"><label for="cw-skill">BS/WS</label><select id="cw-skill"><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>
+                <div class="field"><label for="cw-S">S</label><input id="cw-S" type="number" min="1" max="30" value="4"></div>
+                <div class="field"><label for="cw-AP">AP</label><input id="cw-AP" type="number" min="-6" max="0" value="-1"></div>
+                <div class="field"><label for="cw-D">D</label><input id="cw-D" type="text" value="1" maxlength="8"></div>
+                <div class="field wide"><label for="cw-kw">Keywords <span class="muted small">(comma separated)</span></label><input id="cw-kw" type="text" placeholder="Lethal Hits, Sustained Hits 1, Anti-Infantry 4+, Melta 2"></div>
+              </div>
+              <div class="row tight" style="margin-top:8px">
+                <button type="button" class="btn sm" id="cw-save">Add weapon</button>
+                <button type="button" class="btn ghost sm" id="cw-cancel">Cancel</button>
+                <span class="error small" id="cw-error"></span>
+              </div>
+            </div>
           </div>
-          <fieldset><legend>Defensive modifiers</legend>
-            <div class="checks">
-              <label><input type="checkbox" id="dm-cover"> Benefit of Cover</label>
-              <label><input type="checkbox" id="dm-dr"> −1 Damage</label>
-              <label><input type="checkbox" id="dm-stealth"> −1 to be hit</label>
-              <label><input type="checkbox" id="dm-woundmod"> −1 to be wounded</label>
-              <label><input type="checkbox" id="dm-aoc"> Worsen AP by 1</label>
+        </div>
+
+        <div class="swap-col">
+          <button type="button" class="btn secondary icon" id="swap" title="Swap attacker and defender (S)" aria-label="Swap attacker and defender">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/></svg>
+          </button>
+        </div>
+
+        <!-- Defender -->
+        <div class="card" id="defender-card">
+          <div class="side-head">
+            <span class="badge info side-tag">Defender</span>
+            <h2 class="card-title" id="d-title">Choose a target</h2>
+          </div>
+          <div class="stack tight">
+            <div class="field-row">
+              <div class="field">
+                <label for="d-faction">Faction</label>
+                <select id="d-faction"><option value="">All factions</option></select>
+              </div>
             </div>
-            <div class="row">
-              <div><label for="dm-fnp">Feel No Pain</label><select id="dm-fnp"><option value="">Unit's</option><option value="6">6+</option><option value="5">5+</option><option value="4">4+</option></select></div>
-              <div><label for="dm-inv">Invulnerable save</label><select id="dm-inv"><option value="">Unit's</option><option value="6">6+</option><option value="5">5+</option><option value="4">4+</option><option value="3">3+</option></select></div>
+            <div class="chips" id="d-recent" aria-label="Recent defender factions"></div>
+            <div class="field ac" id="d-ac">
+              <label for="d-search">Unit</label>
+              <input id="d-search" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
+                aria-controls="d-list" autocomplete="off" spellcheck="false" placeholder="Search units, e.g. terminators, carnifex">
+              <ul class="ac-list" id="d-list" role="listbox" aria-label="Defender units" hidden></ul>
             </div>
-          </fieldset>
+            <div class="field-row">
+              <div class="field" style="flex:0 0 auto">
+                <label for="d-models">Models</label>
+                <div class="stepper"><button type="button" data-step="-1" aria-label="Fewer defending models">−</button><input id="d-models" type="number" min="1" max="30" value="5" inputmode="numeric"><button type="button" data-step="1" aria-label="More defending models">+</button></div>
+              </div>
+              <div class="field" style="justify-content:flex-end">
+                <span class="small muted" id="d-points"></span>
+              </div>
+            </div>
+            <div class="statline" id="d-statline" aria-label="Defender profile"></div>
+            <div class="kw-list" id="d-keywords"></div>
+            <div class="row tight">
+              <button type="button" class="btn ghost sm" id="d-edit" aria-expanded="false" aria-controls="d-custom">Edit profile</button>
+              <span class="small muted" id="d-custom-note"></span>
+            </div>
+            <div id="d-custom" class="card compact" hidden>
+              <p class="hint" style="margin-top:0">Custom profile: overrides the datasheet for this simulation.</p>
+              <div class="custom-grid">
+                <div class="field"><label for="cd-T">T</label><input id="cd-T" type="number" min="1" max="30" value="4"></div>
+                <div class="field"><label for="cd-Sv">Sv</label><input id="cd-Sv" type="number" min="2" max="7" value="3"></div>
+                <div class="field"><label for="cd-inv">Inv</label><input id="cd-inv" type="number" min="2" max="6" placeholder="–"></div>
+                <div class="field"><label for="cd-W">W</label><input id="cd-W" type="number" min="1" max="40" value="2"></div>
+                <div class="field"><label for="cd-fnp">FNP</label><input id="cd-fnp" type="number" min="2" max="6" placeholder="–"></div>
+                <div class="field wide"><label for="cd-kw">Keywords <span class="muted small">(for Anti-X)</span></label><input id="cd-kw" type="text" placeholder="Infantry, Vehicle, Monster, Fly…"></div>
+              </div>
+              <div class="row tight" style="margin-top:8px">
+                <button type="button" class="btn ghost sm" id="cd-reset">Back to datasheet</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout-sidebar">
+        <!-- Modifiers -->
+        <aside class="sticky" aria-label="Modifiers">
+          <div class="card">
+            <div class="row tight" style="margin-bottom:8px">
+              <h2 class="card-title" style="margin:0">Modifiers</h2>
+              <span class="spacer"></span>
+              <button type="button" class="btn ghost sm" id="mods-reset">Reset</button>
+            </div>
+
+            <details class="mods" open>
+              <summary>Hit &amp; wound rolls <span class="badge" id="b-rolls" hidden></span></summary>
+              <div class="mod-row"><span title="Modifier to the attacker's Hit rolls (capped at ±1).">Hit roll</span>
+                <div class="seg" data-mod="hitMod" role="group" aria-label="Hit roll modifier"><button type="button" data-v="-1">−1</button><button type="button" data-v="0">0</button><button type="button" data-v="1">+1</button></div></div>
+              <div class="mod-row"><span title="Modifier to the attacker's Wound rolls (capped at ±1).">Wound roll</span>
+                <div class="seg" data-mod="woundMod" role="group" aria-label="Wound roll modifier"><button type="button" data-v="-1">−1</button><button type="button" data-v="0">0</button><button type="button" data-v="1">+1</button></div></div>
+              <div class="mod-row"><span title="Re-roll Hit rolls of 1, or every failed Hit roll.">Re-roll hits</span>
+                <div class="seg" data-mod="rerollHits" role="group" aria-label="Re-roll hits"><button type="button" data-v="none">None</button><button type="button" data-v="ones">1s</button><button type="button" data-v="failed">All</button></div></div>
+              <div class="mod-row"><span title="Re-roll Wound rolls of 1, or every failed Wound roll. Twin-linked weapons already re-roll wounds.">Re-roll wounds</span>
+                <div class="seg" data-mod="rerollWounds" role="group" aria-label="Re-roll wounds"><button type="button" data-v="none">None</button><button type="button" data-v="ones">1s</button><button type="button" data-v="failed">All</button></div></div>
+              <div class="mod-row"><span title="Unmodified Hit roll needed for a Critical Hit (triggers Lethal and Sustained Hits).">Critical hit on</span>
+                <div class="seg" data-mod="critHit" role="group" aria-label="Critical hit on"><button type="button" data-v="6">6+</button><button type="button" data-v="5">5+</button><button type="button" data-v="4">4+</button></div></div>
+              <div class="mod-row"><span title="Unmodified Wound roll needed for a Critical Wound (triggers Devastating Wounds). Anti-X lowers this per weapon.">Critical wound on</span>
+                <div class="seg" data-mod="critWound" role="group" aria-label="Critical wound on"><button type="button" data-v="6">6+</button><button type="button" data-v="5">5+</button><button type="button" data-v="4">4+</button></div></div>
+            </details>
+
+            <details class="mods" open>
+              <summary>Situation <span class="badge" id="b-sit" hidden></span></summary>
+              <div class="chips">
+                <button type="button" class="chip" data-mod="halfRange" title="Within half range: Rapid Fire X adds X attacks, Melta X adds X damage.">Half range</button>
+                <button type="button" class="chip" data-mod="stationary" title="Remained Stationary: Heavy weapons get +1 to hit.">Stationary</button>
+                <button type="button" class="chip" data-mod="charged" title="Charged this turn: Lance weapons get +1 to wound.">Charged</button>
+                <button type="button" class="chip" data-mod="cover" data-side="d" title="Benefit of Cover: +1 to the armour save against ranged attacks (not for 3+ or better saves vs AP 0).">Target in cover</button>
+              </div>
+            </details>
+
+            <details class="mods" open>
+              <summary>Attacker abilities <span class="badge" id="b-att" hidden></span></summary>
+              <div class="chips">
+                <button type="button" class="chip" data-mod="lethalHits" title="Lethal Hits: Critical Hits automatically wound.">Lethal Hits</button>
+                <button type="button" class="chip" data-mod="devastatingWounds" title="Devastating Wounds: Critical Wounds inflict mortal wounds equal to Damage (no saves).">Devastating Wounds</button>
+                <button type="button" class="chip" data-mod="ignoresCover" title="Ignores Cover: the target gets no Benefit of Cover.">Ignores Cover</button>
+              </div>
+              <div class="mod-row"><span title="Sustained Hits X: each Critical Hit scores X additional hits.">Sustained Hits</span>
+                <div class="seg" data-mod="sustainedHits" role="group" aria-label="Sustained Hits"><button type="button" data-v="0">–</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button><button type="button" data-v="D3">D3</button></div></div>
+              <p class="opt-note">Weapon keywords (Lethal, Sustained, Devastating, Twin-linked, Torrent, Blast, Melta, Rapid Fire, Lance, Heavy, Anti-X) apply automatically.</p>
+            </details>
+
+            <details class="mods" open>
+              <summary>Defender abilities <span class="badge" id="b-def" hidden></span></summary>
+              <div class="chips">
+                <button type="button" class="chip" data-mod="stealth" data-side="d" title="Stealth / −1 to be hit: subtract 1 from Hit rolls against this unit.">−1 to be hit</button>
+                <button type="button" class="chip" data-mod="minusWound" data-side="d" title="Subtract 1 from Wound rolls against this unit.">−1 to be wounded</button>
+                <button type="button" class="chip" data-mod="damageReduction" data-side="d" title="Reduce the Damage of each attack by 1 (to a minimum of 1).">−1 Damage</button>
+                <button type="button" class="chip" data-mod="apReduction" data-side="d" title="Worsen the AP of incoming attacks by 1 (e.g. Armour of Contempt).">−1 AP</button>
+              </div>
+              <div class="mod-row"><span title="Feel No Pain X+: roll for each wound lost; on X+ it is ignored. Uses the better of this and the datasheet.">Feel No Pain</span>
+                <div class="seg" data-mod="fnp" data-side="d" role="group" aria-label="Feel No Pain override"><button type="button" data-v="">–</button><button type="button" data-v="6">6+</button><button type="button" data-v="5">5+</button><button type="button" data-v="4">4+</button></div></div>
+              <div class="mod-row"><span title="Invulnerable save X+: ignores AP. Uses the better of this and the datasheet.">Invulnerable save</span>
+                <div class="seg" data-mod="invuln" data-side="d" role="group" aria-label="Invulnerable save override"><button type="button" data-v="">–</button><button type="button" data-v="5">5+</button><button type="button" data-v="4">4+</button><button type="button" data-v="3">3+</button></div></div>
+            </details>
+          </div>
+        </aside>
+
+        <!-- Results -->
+        <section class="stack" aria-label="Results">
+          <div class="card" id="results-card" aria-live="polite">
+            <div class="result-head">
+              <h2 id="res-title">Results</h2>
+              <span class="busy-dot" aria-hidden="true"></span>
+              <span class="spacer"></span>
+              <button type="button" class="btn secondary sm" id="pin" title="Pin this result to compare (up to 3)">Pin to compare</button>
+              <button type="button" class="btn ghost sm" id="share" title="Copy a link to this setup">Copy link</button>
+            </div>
+            <p class="muted small" id="res-sub" style="margin:4px 0 12px"></p>
+            <div id="status" role="status"></div>
+            <div id="results" hidden>
+              <div class="stats" id="tiles"></div>
+
+              <h3 class="section-title">Attack sequence</h3>
+              <div class="funnel" id="funnel"></div>
+
+              <h3 class="section-title">Models killed</h3>
+              <div class="tabs" role="tablist" aria-label="Distribution view">
+                <button type="button" class="tab" role="tab" id="tab-chart" aria-selected="true" aria-controls="panel-chart">Chart</button>
+                <button type="button" class="tab" role="tab" id="tab-table" aria-selected="false" aria-controls="panel-table">At least N</button>
+              </div>
+              <div class="tab-panel" id="panel-chart" role="tabpanel" aria-labelledby="tab-chart">
+                <div class="chart chart-wrap" id="chart"></div>
+              </div>
+              <div class="tab-panel" id="panel-table" role="tabpanel" aria-labelledby="tab-table" hidden>
+                <div class="table-wrap"><table id="dist-table"></table></div>
+              </div>
+
+              <h3 class="section-title">Per weapon</h3>
+              <div class="table-wrap"><table id="breakdown"></table></div>
+              <p class="muted small" id="method"></p>
+            </div>
+          </div>
+
+          <div class="card" id="pins-card" hidden>
+            <div class="row tight" style="margin-bottom:8px">
+              <h2 class="card-title" style="margin:0">Compare</h2>
+              <span class="spacer"></span>
+              <button type="button" class="btn ghost sm" id="pins-clear">Clear all</button>
+            </div>
+            <div class="pins" id="pins"></div>
+          </div>
+
+          <div class="callout info small" id="data-credit">
+            <strong>Data:</strong> datasheets come from the community-maintained
+            <a href="https://github.com/BSData/wh40k-10e" rel="noopener" target="_blank">BSData wh40k-10e</a> BattleScribe files
+            plus a hand-curated starter set. Profiles can lag behind codexes, FAQs and balance dataslates:
+            <strong>verify against the official datasheets</strong> before relying on a result, and use
+            <em>Edit profile</em> or <em>Custom weapon</em> when they differ. Not affiliated with or endorsed by Games Workshop.
+            <span id="data-meta"></span>
+          </div>
         </section>
       </div>
-      <div class="actions">
-        <button id="go" type="submit">Calculate</button>
-        <span id="status" class="muted" role="status" aria-live="polite"></span>
-      </div>
-    </form>
-
-    <section class="card" id="results" aria-labelledby="res-h" hidden>
-      <h2 id="res-h" style="margin-top:0">Results</h2>
-      <p class="muted" id="res-sub"></p>
-      <div class="tiles" id="tiles"></div>
-      <h3>From attacks to damage</h3>
-      <div class="funnel" id="funnel"></div>
-      <h3 id="chart-h">Models killed: probability</h3>
-      <div class="chart" id="chart" style="position:relative"></div>
-      <details><summary>Show as a table</summary><div class="table-wrap"><table id="dist-table"></table></div></details>
-      <h3>Step by step, per weapon</h3>
-      <div class="table-wrap"><table id="breakdown"></table></div>
-      <p class="muted" id="method" style="font-size:.85rem"></p>
-    </section>
+    </div>
   </main>
+
+  <footer class="site">
+    <p>40k Toolkit is an unofficial fan project and is not affiliated with or endorsed by Games Workshop.</p>
+    <p>Warhammer 40,000 and related marks are trademarks of Games Workshop Ltd. Unit data: BSData community project.</p>
+  </footer>
   <script type="module" src="combat.js"></script>
 </body>
 </html>

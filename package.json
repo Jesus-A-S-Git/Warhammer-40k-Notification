@@ -12,7 +12,8 @@
     "snapshot": "node scripts/snapshot-prices.js",
     "snapshot:demo": "node scripts/snapshot-prices.js _site/data/prices.json --demo",
     "build:static": "node scripts/build-static.js",
-    "preview:static": "node scripts/preview-static.js"
+    "preview:static": "node scripts/preview-static.js",
+    "import:units": "node scripts/import-units.js"
   },
   "engines": {
     "node": ">=20"
