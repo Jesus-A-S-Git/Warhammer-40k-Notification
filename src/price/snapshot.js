@@ -29,7 +29,7 @@ import { normalize, expandQuery } from '../search/fuzzy.js';
 
 export const SNAPSHOT_VERSION = 2;
 export const CARRY_MAX_DAYS = 14;
-export const DEFAULTS = Object.freeze({ maxMinutes: 40, maxQueriesPerRetailer: 80, maxConsecutiveErrors: 3 });
+export const DEFAULTS = Object.freeze({ maxMinutes: 40, maxQueriesPerRetailer: 200, maxConsecutiveErrors: 3 });
 const STOP_CODES = new Set(['PAUSED', 'REFUSED', 'RATE_LIMITED', 'ROBOTS', 'REDIRECT']);
 // A store that answers with one of these does not want automated visitors: it is
 // recorded in the snapshot's `blockedStores` and every later refresh skips it.
@@ -102,7 +102,10 @@ function keepOffer(o, r, now) {
   if (!productId) return null;
   return {
     retailerId: r.id, productId, title: String(offer.title).slice(0, 200), url: new URL(offer.url).href,
-    imageUrl: offer.imageUrl ?? undefined, price: Math.round(offer.price * 100) / 100, currency: offer.currency,
+    // checkOffer() already kept only https images on the store's own domain / CDN
+    // and sane list prices (the store's RRP figure, used as RRP evidence).
+    imageUrl: offer.imageUrl ?? undefined, listPrice: offer.listPrice ?? undefined,
+    price: Math.round(offer.price * 100) / 100, currency: offer.currency,
     inStock: typeof offer.inStock === 'boolean' ? offer.inStock : null, fetchedAt: offer.fetchedAt ?? now,
   };
 }

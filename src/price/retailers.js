@@ -76,6 +76,7 @@ export const RETAILERS = [
     region: 'UK', country: 'GB', currency: 'GBP', tier: 'authorized',
     notes: 'Long-standing UK stockist with physical stores; Shopify storefront.',
     shippingNote: 'UK shipping; free over a threshold.',
+    imageHosts: ['cdn.shopify.com'],
     adapter: { type: 'shopify', host: 'www.goblingaming.co.uk' },
   },
   {
@@ -88,7 +89,10 @@ export const RETAILERS = [
     // Real search form found by the probe; old /searchresults URL returned 404.
     // No JSON-LD on results, so product cards are read directly (selectors from probe run 3).
     adapter: { type: 'listing', searchUrl: 'https://www.miniaturemarket.com/search?search={q}',
-      cardMarker: 'class="product-info"', linkClass: 'product-name', priceClass: 'product-price' },
+      cardMarker: 'class="product-info"', linkClass: 'product-name', priceClass: 'product-price',
+      listPriceClass: 'list-price-price' },
+    // Product photos are served from the store's own domain or its media CDN.
+    imageHosts: ['cdn.miniaturemarket.com', 'media.miniaturemarket.com'],
   },
   {
     id: 'noble-knight',
@@ -119,7 +123,7 @@ export const RETAILERS = [
     // probe; results pages have no JSON-LD, so product cards are read directly.
     adapter: { type: 'listing', live: false, liveDisabledReason: 'Refuses automated requests (HTTP 403)',
       searchUrl: 'https://www.discountgamesinc.com/search/?q={q}',
-      cardMarker: 'class="product-info"', linkClass: 'product-title', priceClass: 'price' },
+      cardMarker: 'class="product-info"', linkClass: 'product-title', priceClass: 'price', listPriceClass: 'old-price' },
   },
   {
     id: 'wargame-portal',
@@ -132,6 +136,7 @@ export const RETAILERS = [
     shippingNote: 'US shipping; reviews report slower dispatch on discounted orders.',
     caution: 'Mixed reviews on shipping speed',
     // Shopify storefront; probe (Nov 2026) confirmed /search/suggest.json returns products.
+    imageHosts: ['cdn.shopify.com'],
     adapter: { type: 'shopify', host: 'wargameportal.com' },
   },
   {

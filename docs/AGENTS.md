@@ -32,6 +32,8 @@ through the **contracts** below. Re-use this workflow for future features.
 | Price agent | `src/price/`, `public/prices.html`, `public/prices.js`, `test/price*.test.js` | anything else |
 | Combat agent | `src/combat/`, `public/combat.html`, `public/combat.js`, `test/combat*.test.js` | anything else |
 | Reviewer | nothing (read-only); returns a findings list | — |
+| Data agent (v2) | `src/price/`, `scripts/`, `public/static-api.js`, `.github/workflows/`, `test/price*.test.js`, `test/army-*.test.js` | other `public/*` |
+| Experience agent (v2) | `public/*` pages, styles and UI scripts | `public/static-api.js`, `src/` |
 
 ## Contracts
 
@@ -57,6 +59,14 @@ through the **contracts** below. Re-use this workflow for future features.
 * `src/price/routes.js` exports `priceRouter` (Express Router) mounted at `/api/prices`.
 * `src/combat/routes.js` exports `combatRouter` mounted at `/api/combat`.
 * Errors: JSON `{ error: string }` with a 4xx or 5xx status.
+
+### Deal Finder API v2 (Data agent ↔ Experience agent)
+* Payload builders live in `src/price/api.js` (overview, product, faction, RSS) and `src/price/army.js`
+  (army list pricer). Both `src/price/routes.js` and `public/static-api.js` call them, so the static site
+  and the server return the same shapes; `test/price-static-parity.test.js` enforces it.
+* ProductCard / Offer shapes and the endpoint list are documented in the README ("Deal Finder data and API").
+  Unknown values are `null`, never missing keys. Add fields; don't rename or remove them.
+* Pages link the feed with the relative path `data/deals.xml` (served by the server and published by the static build).
 
 ### Frontend
 * Static files in `public/`, no build step, vanilla ES modules.

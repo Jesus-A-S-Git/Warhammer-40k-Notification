@@ -11,7 +11,7 @@ test('Miniature Market: reads title, selling price (not list price), stock', () 
   const out = parseListing(MINIATURE_MARKET, cfg('miniature-market'), 'https://www.miniaturemarket.com/search?search=x');
   assert.equal(out.length, 2);
   assert.deepEqual(out[0], {
-    title: 'Warhammer 40K: Space Marines - Intercessor Squad', price: 57.99, inStock: true,
+    title: 'Warhammer 40K: Space Marines - Intercessor Squad', price: 57.99, inStock: true, listPrice: 67.5,
     url: 'https://www.miniaturemarket.com/Warhammer-40K-Space-Marines-Intercessor-Squad/GW-48-115-2026',
   });
   assert.equal(out[1].price, 31.99);

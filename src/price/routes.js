@@ -8,6 +8,8 @@ import { SUSPICIOUS_RATIO } from './trust.js';
 import { catalogPayload } from './catalog.js';
 import { planCart } from './overview.js';
 import { loadOverview } from './snapshotStore.js';
+import { overviewPayload, productPayload, factionPayload, dealsRss } from './api.js';
+import { armyPayload, armyRequestError } from './army.js';
 
 export const priceRouter = Router();
 
@@ -114,7 +116,7 @@ priceRouter.get('/overview', async (req, res) => {
       return res.status(404).json({ error: 'No price snapshot yet. Run `npm run snapshot` (live) or '
         + '`npm run snapshot:demo` (sample data), or tick “Sample data”.' });
     }
-    res.set('Cache-Control', 'no-cache').json({ ...overview, source });
+    res.set('Cache-Control', 'no-cache').json({ ...overviewPayload(overview), source });
   } catch (err) {
     console.error('overview failed', err);
     res.status(500).json({ error: 'Could not build the deals overview' });
@@ -136,3 +138,68 @@ priceRouter.post('/cart', async (req, res) => {
     res.status(500).json({ error: 'Cart optimization failed' });
   }
 });
+
+const NO_SNAPSHOT = 'No price snapshot yet';
+const ID_RE = /^[a-z0-9-]{1,120}$/;
+
+// Product page: ProductCard + offers, history, related products and RRP evidence.
+priceRouter.get('/product/:id', async (req, res) => {
+  const id = String(req.params.id);
+  if (!ID_RE.test(id)) return res.status(404).json({ error: `Unknown product "${id.slice(0, 120)}"` });
+  try {
+    const { overview } = await loadOverview({ demo: isDemo(req) });
+    if (!overview) return res.status(404).json({ error: NO_SNAPSHOT });
+    const out = productPayload(overview, id);
+    if (!out) return res.status(404).json({ error: `Unknown product "${id}"` });
+    res.set('Cache-Control', 'no-cache').json(out);
+  } catch (err) {
+    console.error('product failed', err);
+    res.status(500).json({ error: 'Could not build the product page' });
+  }
+});
+
+priceRouter.get('/faction/:id', async (req, res) => {
+  const id = String(req.params.id);
+  if (!ID_RE.test(id)) return res.status(404).json({ error: `Unknown faction "${id.slice(0, 120)}"` });
+  try {
+    const { overview } = await loadOverview({ demo: isDemo(req) });
+    if (!overview) return res.status(404).json({ error: NO_SNAPSHOT });
+    const out = factionPayload(overview, id);
+    if (!out) return res.status(404).json({ error: `Unknown faction "${id}"` });
+    res.set('Cache-Control', 'no-cache').json(out);
+  } catch (err) {
+    console.error('faction failed', err);
+    res.status(500).json({ error: 'Could not build the faction page' });
+  }
+});
+
+// Army list pricer: { list: string, owned?: {productId: boxes}, shipping?, demo? }
+priceRouter.post('/army', async (req, res) => {
+  const bad = armyRequestError(req.body);
+  if (bad) return res.status(400).json({ error: bad });
+  try {
+    const { overview } = await loadOverview({ demo: isDemo(req) });
+    if (!overview) return res.status(404).json({ error: NO_SNAPSHOT });
+    res.set('Cache-Control', 'no-store').json(armyPayload(overview, req.body.list, req.body.owned ?? {}, { overrides: req.body.shipping }));
+  } catch (err) {
+    console.error('army failed', err);
+    res.status(500).json({ error: 'Army list pricing failed' });
+  }
+});
+
+// RSS 2.0 feed of new lows and price drops (no tracking parameters).
+// Also mounted at /data/deals.xml by server.js, the same path as the static site's file,
+// so pages can link to "data/deals.xml" in both modes.
+export async function feedHandler(req, res) {
+  try {
+    const { overview } = await loadOverview({ demo: isDemo(req) });
+    if (!overview) return res.status(404).json({ error: NO_SNAPSHOT });
+    const origin = `${req.protocol}://${req.get('host')}`;
+    res.type('application/rss+xml; charset=utf-8').set('Cache-Control', 'public, max-age=600')
+      .send(dealsRss(overview, { siteUrl: `${origin}/prices.html`, selfUrl: `${origin}${req.originalUrl.split('?')[0]}` }));
+  } catch (err) {
+    console.error('feed failed', err);
+    res.status(500).json({ error: 'Could not build the deals feed' });
+  }
+}
+priceRouter.get('/feed.xml', feedHandler);

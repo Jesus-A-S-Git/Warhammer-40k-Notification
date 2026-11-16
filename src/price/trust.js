@@ -25,12 +25,31 @@ export function checkOffer(offer) {
     return { ok: false, reason: 'bad-price' };
   }
   if (!isSupportedCurrency(offer.currency)) return { ok: false, reason: 'unsupported-currency' };
-  if (offer.imageUrl) {
-    // Images are optional; drop non-https image URLs rather than the offer.
-    try { if (new URL(offer.imageUrl).protocol !== 'https:') offer.imageUrl = undefined; }
-    catch { offer.imageUrl = undefined; }
+  // Images are optional: keep only https images served by the offer's own store
+  // (or its registered image CDN); anything else is dropped, never the offer.
+  if (offer.imageUrl !== undefined) offer.imageUrl = safeImageUrl(offer.imageUrl, retailer) ?? undefined;
+  // List / "compare at" price (the store's own RRP figure): optional evidence,
+  // dropped when it is not a sane number at or above the selling price.
+  if (offer.listPrice !== undefined) {
+    const lp = Number(offer.listPrice);
+    offer.listPrice = Number.isFinite(lp) && lp > 0 && lp + 0.005 >= offer.price && lp <= offer.price * 3
+      ? Math.round(lp * 100) / 100 : undefined;
   }
   return { ok: true };
+}
+
+/**
+ * An image URL that is https and hosted on the retailer's own domain or one of
+ * its `imageHosts` (e.g. cdn.shopify.com for Shopify stores), else null.
+ */
+export function safeImageUrl(url, retailer) {
+  if (typeof url !== 'string' || !retailer || url.length > 1000) return null;
+  let u;
+  try { u = new URL(url.startsWith('//') ? `https:${url}` : url); } catch { return null; }
+  if (u.protocol !== 'https:' || u.username || u.password || u.port) return null;
+  const host = u.hostname.toLowerCase().replace(/\.$/, '');
+  if (!retailer.domains.includes(host) && !(retailer.imageHosts ?? []).includes(host)) return null;
+  return u.href;
 }
 
 /**
@@ -39,9 +58,9 @@ export function checkOffer(offer) {
  * @param {object|null} fallbackMsrp  MSRP entry for the query (used when the
  *   offer title doesn't map to a specific table entry itself)
  */
-export function flagOffer(offer, fallbackMsrp = null) {
+export function flagOffer(offer, fallbackMsrp = null, { prefer = false } = {}) {
   const flags = [];
-  const entry = findMsrp(offer.title) ?? fallbackMsrp;
+  const entry = prefer && fallbackMsrp ? fallbackMsrp : findMsrp(offer.title) ?? fallbackMsrp;
   const msrp = msrpIn(entry, offer.currency);
   let savingPct = null;
   if (msrp) {

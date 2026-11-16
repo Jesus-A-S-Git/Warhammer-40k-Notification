@@ -3,11 +3,14 @@
 //   lib/combat, lib/price,   browser-safe modules shared with the server
 //   lib/search
 //   data/prices.json         price snapshot (from scripts/snapshot-prices.js; kept if present)
+//   data/deals.xml           RSS 2.0 feed of new lows + biggest 7-day drops, built from the snapshot
 //
 // Usage: node scripts/build-static.js [outDir]
 import { cp, mkdir, writeFile, access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildOverview } from '../src/price/overview.js';
+import { dealsRss } from '../src/price/api.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.resolve(process.argv[2] ?? path.join(root, '_site'));
@@ -19,6 +22,7 @@ const LIB = [
   'price/rank.js', 'price/retailers.js', 'price/trust.js', 'price/match.js',
   'price/msrp.js', 'price/currency.js', 'price/location.js', 'price/watchlist.js',
   'price/catalog.js', 'price/deals.js', 'price/cart.js', 'price/history.js', 'price/overview.js',
+  'price/rrp.js', 'price/api.js', 'price/army.js', 'price/kits.js',
   'search/fuzzy.js', 'combat/unitSearch.js',
 ];
 
@@ -44,4 +48,12 @@ try { await access(snap); } catch {
   await mkdir(path.dirname(snap), { recursive: true });
   await writeFile(snap, JSON.stringify({ generatedAt: null, demo: false, offers: [], retailers: [], watchlist: [] }));
 }
-console.log(`Static site written to ${out}`);
+// Deals feed. Absolute links are required in RSS: PAGES_URL (set by the Pages
+// workflow) or https://<owner>.github.io/<repo>/, else the local preview address.
+const [owner, name] = repo.split('/');
+const pagesUrl = /^https:\/\/[\w.-]+(\/[\w./-]*)?$/.test(process.env.PAGES_URL ?? '') ? process.env.PAGES_URL.replace(/\/?$/, '/')
+  : repo ? `https://${owner.toLowerCase()}.github.io/${name}/` : 'http://localhost:4000/Warhammer-40k-Notification/';
+const snapData = JSON.parse(await readFile(snap, 'utf8'));
+const feed = dealsRss(buildOverview(snapData), { siteUrl: `${pagesUrl}prices.html`, selfUrl: `${pagesUrl}data/deals.xml` });
+await writeFile(path.join(out, 'data', 'deals.xml'), feed);
+console.log(`Static site written to ${out} (deals feed: ${(feed.match(/<item>/g) ?? []).length} items)`);

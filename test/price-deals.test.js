@@ -159,8 +159,13 @@ test('catalogue: every faction with a Combat Patrol, categories, ids unique, san
   const facs = new Set(FACTIONS.map((f) => f.id));
   for (const e of CATALOG) {
     assert.ok(cats.has(e.category) && facs.has(e.faction), e.id);
-    assert.ok(e.USD > 0 && e.GBP > 0 && e.EUR > 0 && e.approximate, e.id);
-    assert.ok(['medium', 'low'].includes(e.conf), e.id);
+    if (e.USD == null) {
+      // Unpriced kit: no guessed figure in any currency, no confidence claimed.
+      assert.ok(e.GBP == null && e.EUR == null && e.conf == null && e.category === 'kit', e.id);
+    } else {
+      assert.ok(e.USD > 0 && e.GBP > 0 && e.EUR > 0 && e.approximate, e.id);
+      assert.ok(['medium', 'low'].includes(e.conf), e.id);
+    }
     assert.equal(findMsrp(e.name)?.id, e.id, `${e.name} maps to itself`);
   }
   const cps = CATALOG.filter((e) => e.category === 'combat-patrol').length;
@@ -374,11 +379,11 @@ test('overview: top deals, value per model, freshness, stores; untrusted offers 
   assert.equal(ov.snapshot.freshness, 'fresh');
   assert.ok(ov.snapshot.rejected >= 1, 'lookalike domain dropped');
   assert.ok(ov.topDeals.length >= 5);
-  const scores = ov.topDeals.map((id) => ov.products.find((p) => p.id === id).best.deal.score);
+  const scores = ov.topDeals.map((id) => ov.products.find((p) => p.id === id).dealScore);
   assert.deepEqual(scores, [...scores].sort((a, b) => b - a));
   const intercessors = ov.products.find((p) => p.id === 'space-marines-intercessors');
   assert.ok(!intercessors.offers.some((o) => /Upgrade Sprue/.test(o.title)));
-  if (intercessors.best) assert.equal(intercessors.perModel, r2(intercessors.best.deal.price / 10));
+  if (intercessors.best) assert.equal(intercessors.perModel, r2(intercessors.best.price / 10));
   assert.ok(intercessors.history.length > 1 && intercessors.lowest);
   assert.ok(ov.stores.every((s) => s.lastOkAt || s.status === 'skipped'));
   assert.equal(buildOverview(snap, { now: now + 9 * 86_400_000 }).snapshot.freshness, 'stale');
