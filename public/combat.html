@@ -7,6 +7,7 @@
   <meta name="description" content="Warhammer 40,000 10th edition damage simulator: pick any attacker and defender datasheet, toggle rules and modifiers, and see expected damage and the full kill distribution.">
   <meta name="color-scheme" content="dark light">
   <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&amp;display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="ui.js"></script>
   <style>
@@ -90,9 +91,12 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site"><nav aria-label="Main">
     <a class="brand" href="./">40k Toolkit</a>
-    <a href="./">Home</a>
-    <a href="prices.html">Deal Finder</a>
-    <a href="combat.html">Damage Simulator</a>
+    <a href="deals.html" data-nav-for="deals.html product.html">Deals</a>
+    <a href="faction.html">Factions</a>
+    <a href="army.html">Army pricer</a>
+    <a href="combat.html">Damage simulator</a>
+    <button type="button" class="search-trigger" data-palette aria-label="Search everything"><span class="st-text">Search kits, factions, units…</span><kbd class="kbd" data-palette-kbd>Ctrl K</kbd></button>
+    <a class="nav-icon" href="watchlist.html" aria-label="Watchlist" title="Watchlist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9Z"/></svg><span class="count" data-watch-count hidden></span></a>
     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme"></button>
   </nav></header>
 
@@ -346,8 +350,35 @@
   </main>
 
   <footer class="site">
-    <p>40k Toolkit is an unofficial fan project and is not affiliated with or endorsed by Games Workshop.</p>
-    <p>Warhammer 40,000 and related marks are trademarks of Games Workshop Ltd. Unit data: BSData community project.</p>
+    <div class="foot-grid">
+      <div>
+        <div class="foot-brand">40k Toolkit</div>
+        <p>The cheapest delivered price on Warhammer 40,000 kits from a short list of vetted US stores, and dice maths for every datasheet.</p>
+        <p>Shipping and tax are estimates: always confirm the final price at checkout.</p>
+      </div>
+      <div><h2>Shop</h2><ul>
+        <li><a href="deals.html">All deals</a></li>
+        <li><a href="deals.html?sort=drop">Price drops</a></li>
+        <li><a href="faction.html">Factions</a></li>
+        <li><a href="watchlist.html">Watchlist &amp; alerts</a></li>
+        <li><a data-feed-link href="data/deals.xml">RSS deals feed</a></li>
+      </ul></div>
+      <div><h2>Tools</h2><ul>
+        <li><a href="army.html">Army list pricer</a></li>
+        <li><a href="prices.html#cart">Cart optimizer</a></li>
+        <li><a href="prices.html#value">Value per point</a></li>
+        <li><a href="combat.html">Damage simulator</a></li>
+        <li><a href="prices.html">All price tools</a></li>
+      </ul></div>
+      <div><h2>Trust</h2><ul>
+        <li><a href="prices.html#stores">Vetted stores &amp; method</a></li>
+        <li>Direct links to the stores</li>
+        <li>Sample data is always labelled</li>
+      </ul></div>
+    </div>
+    <div class="foot-legal">
+      <p>40k Toolkit is an unofficial fan project and is not affiliated with or endorsed by Games Workshop. Warhammer 40,000 and related marks are trademarks of Games Workshop Ltd.</p>
+    </div>
   </footer>
   <script type="module" src="combat.js"></script>
 </body>

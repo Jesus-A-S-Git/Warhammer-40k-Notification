@@ -74,5 +74,17 @@ through the **contracts** below. Re-use this workflow for future features.
   `public/ui.js` handles nav highlighting, the theme toggle and the mobile menu, and exports
   `toast`, `el`, `fmtMoney`, `debounce`, `currentTheme`, `setTheme`.
 * Each page uses the shared skeleton: inline theme script in `<head>`, `styles.css`, `ui.js`,
-  `header.site` nav (Home · Deal Finder · Damage Simulator + `.theme-toggle`), `.page-head`, `footer.site`.
+  `header.site` nav (Deals · Factions · Army pricer · Damage simulator, search button for the Ctrl/⌘K palette,
+  watchlist star, `.theme-toggle`), `footer.site`.
 * `test/ui.test.js` asserts every contract class/token exists; extend it when adding to the contract.
+* Pages: `index.html` (deal hub), `deals.html`, `faction.html[?id=]`, `product.html?id=`, `army.html`,
+  `watchlist.html`, `prices.html` (price tools: cart optimizer, value per model, store search, method),
+  `combat.html[?attacker=&defender=]`.
+* Shared modules in `public/app/`: `api.js` is the only data layer (calls the API in server mode and
+  `static-api.js` in static mode; caches the overview for 3 minutes), plus `kit.js`, `chart.js`,
+  `search.js`, `palette.js`, `watch.js`, `browse.js` and one script per page.
+* Price API v2 shapes are documented in README.md (ProductCard, /product/:id, /faction/:id, /army, RSS).
+  Server routes and `static-api.js` share builders in `src/price/api.js` / `army.js`;
+  `test/price-static-parity.test.js` keeps them identical.
+* `test/ui-pages.test.js` checks every page has the shared shell, relative links only, resolvable
+  module imports and lazy no-referrer https images.
