@@ -24,8 +24,14 @@ export function parseShopifySuggest(json, { host, currency, priceInCents = false
     u.search = ''; u.hash = '';
     let imageUrl = typeof p.image === 'string' ? p.image : p.featured_image?.url;
     if (imageUrl?.startsWith('//')) imageUrl = `https:${imageUrl}`;
+    // "Compare at" price: the store's own list price (usually the RRP) when it
+    // sells below it. Shopify sends "0.00" / null when there is none.
+    const cmpRaw = p.compare_at_price_max ?? p.compare_at_price ?? p.compare_at_price_min;
+    let listPrice = typeof cmpRaw === 'string' ? Number.parseFloat(cmpRaw.replace(/,/g, '')) : Number(cmpRaw);
+    if (Number.isFinite(listPrice) && (priceInCents || (typeof cmpRaw === 'number' && Number.isInteger(cmpRaw) && cmpRaw > 10000))) listPrice /= 100;
     out.push({ title: String(p.title), price, currency, url: u.href,
-      inStock: typeof p.available === 'boolean' ? p.available : null, imageUrl });
+      inStock: typeof p.available === 'boolean' ? p.available : null, imageUrl,
+      ...(Number.isFinite(listPrice) && listPrice > price ? { listPrice } : {}) });
   }
   return out;
 }

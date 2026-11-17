@@ -81,7 +81,9 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
     seen.add(href);
     const r = byId.get(offer.retailerId);
     if (region !== 'All' && r.region !== region) { drop('region'); continue; }
-    const { flags, msrp, savingPct } = flagOffer(offer, queryMsrp);
+    // A product-mode call (overview) already knows the product, and may carry an
+    // RRP backed by retailer list prices: use it for the "too cheap" check too.
+    const { flags, msrp, savingPct } = flagOffer(offer, queryMsrp, { prefer: !!product });
     const target = currency === 'native' ? null : currency;
     const domestic = !!home && r.region === home.region;
     if (home && !domestic) flags.push('international');
@@ -92,6 +94,7 @@ export function rankOffers({ query, region = 'All', currency = 'native', demo = 
     results.push({
       retailerId: r.id, retailerName: r.name, tier: r.tier, region: r.region,
       title: offer.title, url: new URL(offer.url).href, imageUrl: offer.imageUrl,
+      listPrice: Number.isFinite(offer.listPrice) ? offer.listPrice : undefined,
       price: Math.round(offer.price * 100) / 100, currency: offer.currency,
       convertedPrice: target ? convert(offer.price, offer.currency, target) : null,
       convertedCurrency: target,

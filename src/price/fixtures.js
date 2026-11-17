@@ -126,14 +126,19 @@ const DEMO_BAND = { 'miniature-market': [0.80, 0.92], 'discount-games-inc': [0.7
 export function demoCatalogOffers(fetchedAt) {
   const out = [];
   for (const e of PRODUCT_CATALOG) {
+    // Kits with no catalogue price get a made-up SAMPLE base price, published as
+    // the stores' list price so the demo exercises 'retailer-list' RRPs.
+    const base = e.USD ?? Math.round((e.models > 1 ? 45 + 5 * Math.min(e.models, 10) : 35 + 80 * rnd(`${e.id}|base`)) / 5) * 5;
+    const noList = rnd(`${e.id}|list`) < 0.3; // some products show no list price anywhere
     for (const [rid, fmt] of Object.entries(DEMO_TITLE)) {
       const x = rnd(`${e.id}|${rid}`);
       if (x < 0.12) continue; // not stocked at this store
       const [lo, hi] = DEMO_BAND[rid];
-      const price = Math.round(e.USD * (lo + (hi - lo) * rnd(`${rid}|${e.id}|p`)) * 100) / 100;
+      const price = Math.round(base * (lo + (hi - lo) * rnd(`${rid}|${e.id}|p`)) * 100) / 100;
       const inStock = x < 0.22 ? false : x < 0.27 ? null : true;
       out.push({ retailerId: rid, title: fmt(e.name), price, currency: 'USD',
-        url: `https://${HOST[rid]}/products/${SLUG(e.name)}`, inStock, fetchedAt });
+        url: `https://${HOST[rid]}/products/${SLUG(e.name)}`, inStock, fetchedAt,
+        ...(noList && e.USD != null ? {} : { listPrice: Math.round(base * 100) / 100 }) });
     }
   }
   // Must be filtered out / flagged by the pipeline:

@@ -1,7 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { priceRouter } from './price/routes.js';
+import { priceRouter, feedHandler } from './price/routes.js';
 import { combatRouter } from './combat/routes.js';
 import { limiterStats } from './shared/httpClient.js';
 import { RateLimiter } from './shared/rateLimiter.js';
@@ -50,6 +50,8 @@ export function createApp() {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, outbound: limiterStats() }));
   app.use('/api/prices', priceRouter);
+  // RSS deals feed at the same relative path as the static site's published file.
+  app.get('/data/deals.xml', feedHandler);
   app.use('/api/combat', combatRouter);
   // Browser-safe shared search modules (same paths as the static build's lib/).
   app.use('/lib/search', express.static(path.join(__dirname, 'search')));

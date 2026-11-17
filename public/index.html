@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>40k Toolkit</title>
-  <meta name="description" content="Find real deals on Warhammer 40,000 kits from vetted retailers, and simulate damage for any unit and weapon.">
+  <title>40k Toolkit · Warhammer 40,000 deals, price history and army pricing</title>
+  <meta name="description" content="Find the best delivered price on Warhammer 40,000 kits from vetted US stores: price history, all-time lows, army list pricing and a damage simulator.">
   <meta name="color-scheme" content="dark light">
   <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&amp;display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="ui.js"></script>
 </head>
@@ -14,81 +15,129 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site"><nav aria-label="Main">
     <a class="brand" href="./">40k Toolkit</a>
-    <a href="./">Home</a>
-    <a href="prices.html">Deal Finder</a>
-    <a href="combat.html">Damage Simulator</a>
+    <a href="deals.html" data-nav-for="deals.html product.html">Deals</a>
+    <a href="faction.html">Factions</a>
+    <a href="army.html">Army pricer</a>
+    <a href="combat.html">Damage simulator</a>
+    <button type="button" class="search-trigger" data-palette aria-label="Search everything"><span class="st-text">Search kits, factions, units…</span><kbd class="kbd" data-palette-kbd>Ctrl K</kbd></button>
+    <a class="nav-icon" href="watchlist.html" aria-label="Watchlist" title="Watchlist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9Z"/></svg><span class="count" data-watch-count hidden></span></a>
     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme"></button>
   </nav></header>
 
   <main id="main">
-    <section class="hero">
-      <div class="eyebrow">Warhammer 40,000 toolkit</div>
-      <h1>Buy smarter. Roll with confidence.</h1>
-      <p class="lede">Find the best real price on a kit from retailers worth trusting, then work out exactly how hard your army hits before you roll a single die.</p>
-      <div class="row">
-        <a class="btn" href="prices.html">Find a deal</a>
-        <a class="btn secondary" href="combat.html">Simulate damage</a>
+    <section class="hub-hero" aria-labelledby="hero-h">
+      <div class="eyebrow">Warhammer 40,000 deal finder</div>
+      <h1 id="hero-h">The best delivered price on every kit.</h1>
+      <p class="lede">Vetted US stores compared with shipping and sales tax included. See at a glance whether today’s price is actually good, then price a whole army list in seconds.</p>
+      <div class="hero-search" role="search">
+        <label for="hs" class="visually-hidden">Search kits, factions and datasheets</label>
+        <div class="hs-box">
+          <input id="hs" type="search" placeholder="Try “combat patrol necrons” or “termies”" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="100">
+          <a class="btn" id="hs-go" href="deals.html"><span class="lbl">Search</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+        <ul id="hs-list" class="ac-list" aria-label="Suggestions" hidden></ul>
+      </div>
+      <div class="hero-quick"><span>Jump to</span>
+        <a href="deals.html?cat=combat-patrol">Combat Patrols</a>
+        <a href="deals.html?sort=drop">Price drops</a>
+        <a href="deals.html?max=60&amp;stock=1">Under $60</a>
+        <a href="faction.html?id=space-marines">Space Marines</a>
+        <a href="army.html">Price my army</a>
+      </div>
+      <div class="hero-trust">
+        <span><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.6 3.3 8.4 8 9 4.7-.6 8-4.4 8-9V6Z"/><path d="m9 12 2 2 4-4"/></svg>Vetted stores only</span>
+        <span><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>Shipping + tax estimated</span>
+        <span><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>Too-good-to-be-true listings flagged</span>
+        <span id="hero-fresh"></span>
       </div>
     </section>
 
-    <div class="grid-2">
-      <a class="card feature" href="prices.html">
-        <div class="feature-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
-        </div>
-        <h2>Deal Finder</h2>
-        <p>Find the best real deals on 40k kits from trusted retailers.</p>
-        <ul>
-          <li>Compares prices across a vetted list of stores only</li>
-          <li>Flags prices that look too good to be true</li>
-          <li>Shows the discount against the official price where known</li>
-        </ul>
-        <span class="go">Open Deal Finder <span aria-hidden="true">&rarr;</span></span>
-      </a>
+    <div id="banners" class="stack tight" style="margin-top:16px"></div>
 
-      <a class="card feature" href="combat.html">
-        <div class="feature-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="16" cy="8" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="8" cy="16" r="1.2" fill="currentColor"/><circle cx="16" cy="16" r="1.2" fill="currentColor"/></svg>
-        </div>
-        <h2>Damage Simulator</h2>
-        <p>Every unit, every weapon, full probability breakdown.</p>
-        <ul>
-          <li>Pick an attacking unit, its weapons and a target</li>
-          <li>Expected wounds, damage and models removed</li>
-          <li>The whole distribution, not just the average</li>
-        </ul>
-        <span class="go">Open Damage Simulator <span aria-hidden="true">&rarr;</span></span>
-      </a>
-    </div>
+    <section class="sec" id="sec-lows" aria-labelledby="h-lows">
+      <div class="sec-head"><div><h2 id="h-lows">New all-time lows</h2><p class="sec-sub">Kits at the lowest price we have tracked.</p></div><a class="sec-link" href="deals.html?low=1">See all</a></div>
+      <div id="rail-lows" class="rail"><div class="rail-track" id="lows-skel"></div></div>
+    </section>
 
-    <h2 class="section-title">How it works</h2>
-    <div class="grid-3">
-      <div class="card">
-        <div class="step-num" aria-hidden="true">I</div>
-        <h3>Vetted retailers only</h3>
-        <p class="muted">Prices come from a short, hand-picked list of established stores. No anonymous marketplace sellers, no lookalike storefronts.</p>
-      </div>
-      <div class="card">
-        <div class="step-num" aria-hidden="true">II</div>
-        <h3>Polite fetching</h3>
-        <p class="muted">Each retailer is queried within a strict rate limit, results are cached, and robots.txt is respected. We would rather be a little stale than a nuisance.</p>
-      </div>
-      <div class="card">
-        <div class="step-num" aria-hidden="true">III</div>
-        <h3>Maths you can check</h3>
-        <p class="muted">The simulator works the dice sequence step by step, hit, wound, save, damage, so every number can be traced back to a roll.</p>
-      </div>
-    </div>
+    <section class="sec" id="sec-drops" aria-labelledby="h-drops">
+      <div class="sec-head"><div><h2 id="h-drops">Biggest price drops</h2><p class="sec-sub">Best price change over the last 7 days.</p></div><a class="sec-link" href="deals.html?sort=drop">See all</a></div>
+      <div id="rail-drops" class="rail"><div class="rail-track"></div></div>
+    </section>
 
-    <div class="callout warn" style="margin-top:24px">
-      <strong>Check before you buy.</strong>
-      Prices and stock change quickly and may be out of date or missing for some stores. Always confirm the final price, shipping and availability on the retailer's own site. Unit data may lag behind the latest rules updates.
-    </div>
+    <section class="sec" aria-labelledby="h-top">
+      <div class="sec-head"><div><h2 id="h-top">Top deals</h2><p class="sec-sub">Ranked by deal score: discount off RRP after estimated shipping and tax.</p></div><a class="sec-link" href="deals.html">All deals</a></div>
+      <div id="top-grid" class="pc-grid"></div>
+    </section>
+
+    <section class="sec" aria-labelledby="h-fac">
+      <div class="sec-head"><div><h2 id="h-fac">Shop by faction</h2><p class="sec-sub">Every army we track, with the best discount in each.</p></div><a class="sec-link" href="faction.html">All factions</a></div>
+      <div id="fac-grid" class="tile-grid"></div>
+    </section>
+
+    <section class="sec" aria-labelledby="h-cat">
+      <div class="sec-head"><div><h2 id="h-cat">Shop by category</h2></div></div>
+      <div id="cat-grid" class="tile-grid cats"></div>
+    </section>
+
+    <section class="sec" aria-labelledby="h-tools">
+      <div class="sec-head"><div><h2 id="h-tools">Tools for 40k players</h2><p class="sec-sub">Built for buying armies, not single boxes.</p></div></div>
+      <div class="tools">
+        <a class="tool" href="army.html">
+          <span class="tool-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h10a2 2 0 0 1 2 2v1H8M8 3a2 2 0 0 0-2 2v13a3 3 0 0 1-3 3h12a3 3 0 0 0 3-3V6M10 9h6M10 13h6"/></svg></span>
+          <span><h3>Army list pricer</h3><p>Paste a list from the official app, New Recruit or BattleScribe and get the cheapest way to buy it.</p><span class="go">Price a list <span aria-hidden="true">&rarr;</span></span></span>
+        </a>
+        <a class="tool" href="prices.html#cart">
+          <span class="tool-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M3 4h2l2.4 11.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.1L21 8H6.2"/></svg></span>
+          <span><h3>Cart optimizer</h3><p>Splits a shopping list across stores, counting each store’s shipping threshold and tax once.</p><span class="go">Optimise a cart <span aria-hidden="true">&rarr;</span></span></span>
+        </a>
+        <a class="tool" href="combat.html">
+          <span class="tool-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/><circle cx="12" cy="12" r="1.1" fill="currentColor"/><circle cx="16" cy="8" r="1.1" fill="currentColor"/><circle cx="8" cy="16" r="1.1" fill="currentColor"/></svg></span>
+          <span><h3>Damage simulator</h3><p>Before you buy: how hard does that unit actually hit? Every datasheet, full probability breakdown.</p><span class="go">Roll the numbers <span aria-hidden="true">&rarr;</span></span></span>
+        </a>
+      </div>
+    </section>
+
+    <section class="sec" aria-labelledby="h-trust">
+      <div class="sec-head"><div><h2 id="h-trust">Why trust these prices</h2></div><a class="sec-link" href="prices.html#stores">Stores &amp; method</a></div>
+      <div class="grid-3">
+        <div class="card"><div class="step-num" aria-hidden="true">I</div><h3>Vetted stores only</h3><p class="muted">A short, hand-picked list of established stockists. No marketplace sellers, no lookalike storefronts, and prices far below RRP are flagged instead of promoted.</p></div>
+        <div class="card"><div class="step-num" aria-hidden="true">II</div><h3>Delivered, not sticker</h3><p class="muted">Every price includes estimated shipping and sales tax for the area we are set up for, so a cheap kit with expensive postage does not win.</p></div>
+        <div class="card"><div class="step-num" aria-hidden="true">III</div><h3>Polite and honest</h3><p class="muted">Stores are checked within strict rate limits; the age of every price is shown. Estimates and sample data are always labelled.</p></div>
+      </div>
+    </section>
   </main>
 
   <footer class="site">
-    <p>40k Toolkit is an unofficial fan project and is not affiliated with or endorsed by Games Workshop.</p>
-    <p>Warhammer 40,000 and related marks are trademarks of Games Workshop Ltd.</p>
+    <div class="foot-grid">
+      <div>
+        <div class="foot-brand">40k Toolkit</div>
+        <p>The cheapest delivered price on Warhammer 40,000 kits from a short list of vetted US stores, and dice maths for every datasheet.</p>
+        <p>Shipping and tax are estimates: always confirm the final price at checkout.</p>
+      </div>
+      <div><h2>Shop</h2><ul>
+        <li><a href="deals.html">All deals</a></li>
+        <li><a href="deals.html?sort=drop">Price drops</a></li>
+        <li><a href="faction.html">Factions</a></li>
+        <li><a href="watchlist.html">Watchlist &amp; alerts</a></li>
+        <li><a data-feed-link href="data/deals.xml">RSS deals feed</a></li>
+      </ul></div>
+      <div><h2>Tools</h2><ul>
+        <li><a href="army.html">Army list pricer</a></li>
+        <li><a href="prices.html#cart">Cart optimizer</a></li>
+        <li><a href="prices.html#value">Value per point</a></li>
+        <li><a href="combat.html">Damage simulator</a></li>
+        <li><a href="prices.html">All price tools</a></li>
+      </ul></div>
+      <div><h2>Trust</h2><ul>
+        <li><a href="prices.html#stores">Vetted stores &amp; method</a></li>
+        <li>Direct links to the stores</li>
+        <li>Sample data is always labelled</li>
+      </ul></div>
+    </div>
+    <div class="foot-legal">
+      <p>40k Toolkit is an unofficial fan project and is not affiliated with or endorsed by Games Workshop. Warhammer 40,000 and related marks are trademarks of Games Workshop Ltd.</p>
+    </div>
   </footer>
+  <script type="module" src="app/home.js"></script>
 </body>
 </html>

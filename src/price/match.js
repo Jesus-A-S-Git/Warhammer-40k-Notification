@@ -49,8 +49,11 @@ const FACTION_WORDS = ['space marines', 'adeptus astartes', ...CHAPTERS, 'necron
 export const MATCH_THRESHOLD = 0.7;
 export const TITLE_MAX_TYPOS = 1;
 
+const PHRASE_RE = new Map();
 function hasPhrase(norm, phrase) {
-  return new RegExp(`(^| )${phrase}s?( |$)`).test(norm);
+  let re = PHRASE_RE.get(phrase);
+  if (!re) { re = new RegExp(`(^| )${phrase}s?( |$)`); if (PHRASE_RE.size < 5000) PHRASE_RE.set(phrase, re); }
+  return re.test(norm);
 }
 
 /**

@@ -900,8 +900,32 @@ async function init() {
   wire();
   renderPins();
   const hash = fromHash();
-  await applyState(hash || store.get('last', null) || DEFAULT_STATE);
-  if (hash) toast('Loaded the shared setup.', 'info', { timeout: 2500 });
+  let start = clone(hash || store.get('last', null) || DEFAULT_STATE);
+  // ?attacker=<unitId> / ?defender=<unitId> (e.g. from a product page) preselect a side.
+  const params = new URLSearchParams(location.search);
+  const pre = { a: params.get('attacker'), d: params.get('defender') };
+  const picked = [];
+  for (const side of ['a', 'd']) {
+    const id = pre[side];
+    if (!id || !byId.has(id)) continue;
+    const u = byId.get(id);
+    const models = clamp(Number(u.models?.default) || 1, 1, 30);
+    start = sanitize(start);
+    start[side] = side === 'a'
+      ? { faction: '', unitId: id, models, type: start.a.type, sel: {}, custom: [] }
+      : { faction: '', unitId: id, models, custom: null };
+    picked.push(`${u.name} as the ${side === 'a' ? 'attacker' : 'target'}`);
+  }
+  if (pre.a || pre.d) {
+    // Drop the one-off params so later edits (kept in the hash) survive a reload.
+    params.delete('attacker'); params.delete('defender');
+    const q = params.toString();
+    try { history.replaceState(null, '', `${location.pathname}${q ? `?${q}` : ''}${location.hash}`); } catch { /* sandboxed */ }
+  }
+  await applyState(start);
+  if (picked.length) toast(`Loaded ${picked.join(' and ')}.`, 'info', { timeout: 3000 });
+  else if (pre.a || pre.d) toast('That unit is not in the simulator data.', 'warn');
+  else if (hash) toast('Loaded the shared setup.', 'info', { timeout: 2500 });
 }
 
 init();

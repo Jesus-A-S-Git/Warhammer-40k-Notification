@@ -10,7 +10,7 @@
 # A refresh searches the product catalogue (src/price/catalog.js + watchlist.js) at US
 # retailers (home location: Seattle, WA) through the rate-limited pipeline:
 # <= 6 requests/min per retailer (2/min for slower stores), one at a time, robots.txt
-# respected, at most 80 searches per store and 40 minutes per refresh (src/price/snapshot.js).
+# respected, at most 200 searches per store (about 33 min at 6/min) and 40 minutes per refresh (src/price/snapshot.js).
 name: Deploy to GitHub Pages
 
 on:
@@ -76,6 +76,8 @@ jobs:
           fi
 
       - name: Build static site
+        env:
+          PAGES_URL: ${{ steps.pages.outputs.base_url }}
         run: node scripts/build-static.js _site
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -27,7 +27,9 @@ export function bestPricesByProduct(offers, { home = HOME } = {}) {
     if (!id) continue;
     const p = convert(o.price, o.currency, home.currency);
     if (p == null) continue;
-    const msrp = msrpIn(findMsrp(o.title) ?? productById(id), o.currency);
+    // Unpriced kits: the listing's own list price (if any) stands in for the RRP.
+    const msrp = msrpIn(findMsrp(o.title) ?? productById(id), o.currency)
+      ?? (Number.isFinite(o.listPrice) && o.listPrice >= o.price ? o.listPrice : null);
     if (msrp && o.price < msrp * SUSPICIOUS_RATIO) continue;
     if (!out[id] || p < out[id].p || (p === out[id].p && o.retailerId < out[id].r)) out[id] = { p, r: o.retailerId };
   }

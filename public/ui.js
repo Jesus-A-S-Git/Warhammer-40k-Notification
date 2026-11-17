@@ -65,6 +65,7 @@ function markCurrentNav() {
   const here = pageName(location.href);
   for (const a of document.querySelectorAll('header.site nav a')) {
     if (a.classList.contains('brand')) continue;
+    if (a.hasAttribute('data-nav-for') && a.getAttribute('data-nav-for').split(' ').includes(here)) { a.setAttribute('aria-current', 'page'); continue; }
     if (pageName(a.getAttribute('href') || '') === here) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
@@ -90,13 +91,63 @@ function setupMobileNav() {
     if (e.key === 'Escape' && nav.classList.contains('open')) { set(false); btn.focus(); }
   });
   nav.addEventListener('click', (e) => { if (e.target.closest('a')) set(false); });
-  nav.appendChild(btn);
+  const theme = nav.querySelector('.theme-toggle');
+  if (theme && theme.nextSibling) nav.insertBefore(btn, theme.nextSibling); else nav.appendChild(btn);
   nav.classList.add('has-toggle');
+}
+
+// ---------- global search / command palette (loaded on first use) ----------
+let paletteMod = null;
+let typedAhead = null;
+function captureTyping(e) {
+  // Keys typed while the palette module loads go into its search box, not the page.
+  if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) { typedAhead += e.key; e.preventDefault(); }
+  else if (e.key === 'Backspace') { typedAhead = typedAhead.slice(0, -1); e.preventDefault(); }
+}
+function openPalette(prefill = '') {
+  const first = !paletteMod || typedAhead === null;
+  paletteMod ??= import('./app/palette.js');
+  if (first && typedAhead === null) { typedAhead = prefill; document.addEventListener('keydown', captureTyping, true); }
+  paletteMod.then((m) => {
+    document.removeEventListener('keydown', captureTyping, true);
+    const text = typedAhead ?? prefill; typedAhead = null;
+    m.open(text);
+  }).catch(() => { document.removeEventListener('keydown', captureTyping, true); typedAhead = null; paletteMod = null; location.href = 'deals.html'; });
+}
+function isTyping(t) {
+  return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+}
+function setupPalette() {
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+  for (const k of document.querySelectorAll('[data-palette-kbd]')) k.textContent = mac ? '⌘K' : 'Ctrl K';
+  for (const b of document.querySelectorAll('[data-palette]')) {
+    b.addEventListener('click', () => openPalette());
+    b.setAttribute('aria-keyshortcuts', mac ? 'Meta+K' : 'Control+K');
+  }
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
+    else if (e.key === '/' && !e.metaKey && !e.ctrlKey && !isTyping(e.target)) { e.preventDefault(); openPalette(); }
+  });
+  // Warm the palette module when the pointer approaches the trigger.
+  for (const b of document.querySelectorAll('[data-palette]')) b.addEventListener('pointerenter', () => { paletteMod ??= import('./app/palette.js'); }, { once: true });
+}
+
+// ---------- watchlist count in the header ----------
+function watchCount() {
+  try { const v = JSON.parse(localStorage.getItem('prices.watch.v1') || '[]'); return Array.isArray(v) ? v.length : 0; } catch { return 0; }
+}
+export function syncWatchCount() {
+  const n = watchCount();
+  for (const c of document.querySelectorAll('[data-watch-count]')) { c.textContent = n > 99 ? '99+' : String(n); c.hidden = n === 0; }
 }
 
 function init() {
   markCurrentNav();
   setupMobileNav();
+  setupPalette();
+  syncWatchCount();
+  window.addEventListener('watch:change', syncWatchCount);
+  window.addEventListener('storage', (e) => { if (e.key === 'prices.watch.v1') syncWatchCount(); });
   for (const btn of document.querySelectorAll('[data-theme-toggle]')) {
     if (!btn.getAttribute('type')) btn.setAttribute('type', 'button');
     btn.addEventListener('click', () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'));

@@ -14,6 +14,12 @@
 //  * GBP / EUR are derived from USD unless given (for flagging UK/EU offers only).
 //
 // Add a product: append a line below. Ids are stable slugs of the name.
+// Unit kits without a hand-entered price live in kits.js (RRP null until a
+// store's list price provides one). `units` links each kit to the combat
+// calculator's datasheet ids (src/combat/data), so a product page can say what
+// the box builds and the army list pricer can map datasheets to boxes.
+import { ALL_UNITS } from '../combat/data/catalog.js';
+import { KITS, CATALOGUE_KIT_UNITS } from './kits.js';
 
 export const RRP_AS_OF = '2025-26 US RRP (approx.)';
 
@@ -33,12 +39,14 @@ export const FACTIONS = [
   { id: 'dark-angels', name: 'Dark Angels', group: 'Imperium', color: '#1f5a32', parent: 'space-marines' },
   { id: 'space-wolves', name: 'Space Wolves', group: 'Imperium', color: '#6f8aa3', parent: 'space-marines' },
   { id: 'black-templars', name: 'Black Templars', group: 'Imperium', color: '#222222', parent: 'space-marines' },
+  { id: 'deathwatch', name: 'Deathwatch', group: 'Imperium', color: '#3b3b3b', parent: 'space-marines' },
   { id: 'grey-knights', name: 'Grey Knights', group: 'Imperium', color: '#9aa4ad' },
   { id: 'adeptus-custodes', name: 'Adeptus Custodes', group: 'Imperium', color: '#c79a2b' },
   { id: 'adepta-sororitas', name: 'Adepta Sororitas', group: 'Imperium', color: '#7a1f2b' },
   { id: 'adeptus-mechanicus', name: 'Adeptus Mechanicus', group: 'Imperium', color: '#b0381e' },
   { id: 'astra-militarum', name: 'Astra Militarum', group: 'Imperium', color: '#6b6b3a' },
   { id: 'imperial-knights', name: 'Imperial Knights', group: 'Imperium', color: '#3d5f8a' },
+  { id: 'agents-of-the-imperium', name: 'Agents of the Imperium', group: 'Imperium', color: '#5c4b3a' },
   { id: 'chaos-space-marines', name: 'Chaos Space Marines', group: 'Chaos', color: '#5a1e1e' },
   { id: 'death-guard', name: 'Death Guard', group: 'Chaos', color: '#7c8a3a' },
   { id: 'thousand-sons', name: 'Thousand Sons', group: 'Chaos', color: '#1f6f9a' },
@@ -64,8 +72,8 @@ export const slug = (s) => String(s).replace(/(\d),(\d)/g, '$1$2').toLowerCase()
   .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 // Rough GBP/EUR from a US price (GW's UK prices run at roughly 0.6-0.7 of the US number).
-const gbp = (usd) => Math.round((usd * 0.64) / 2.5) * 2.5;
-const eur = (usd) => Math.round((usd * 0.76) / 2.5) * 2.5;
+const gbp = (usd) => (usd == null ? null : Math.round((usd * 0.64) / 2.5) * 2.5);
+const eur = (usd) => (usd == null ? null : Math.round((usd * 0.76) / 2.5) * 2.5);
 
 function entry(category, faction, name, USD, o = {}) {
   return {
@@ -76,13 +84,15 @@ function entry(category, faction, name, USD, o = {}) {
     kit: o.kit ?? name,
     category, faction, USD,
     GBP: o.GBP ?? gbp(USD), EUR: o.EUR ?? eur(USD),
-    conf: o.conf ?? 'low',
+    // No hand-entered price -> no confidence either (RRP comes from store list prices).
+    conf: USD == null ? null : o.conf ?? 'low',
     models: o.models ?? null,
     points: o.points ?? null,
     // "T’au Empire" is often written "Tau" by stores and players.
     aliases: [...(o.aliases ?? []), ...(name.includes('T’au Empire') ? [name.replace('T’au Empire', 'Tau')] : [])],
     note: o.note ?? null,
     popular: !!o.popular,
+    units: o.units ?? [],
     approximate: true,
   };
 }
@@ -172,7 +182,7 @@ const LIST = [
   kit('astra-militarum', 'Astra Militarum Leman Russ Battle Tank', 65, 1, 190, { kit: 'Leman Russ Battle Tank' }),
   kit('adepta-sororitas', 'Adepta Sororitas Battle Sisters Squad', 50, 10, 105, { kit: 'Battle Sisters Squad' }),
   kit('adeptus-mechanicus', 'Adeptus Mechanicus Skitarii Rangers', 50, 10, 85, { kit: 'Skitarii Rangers' }),
-  kit('imperial-knights', 'Imperial Knights Armiger Warglaives', 90, null, null, { kit: 'Armiger Warglaives' }),
+  kit('imperial-knights', 'Imperial Knights Armiger Warglaives', 90, 2, null, { kit: 'Armiger Warglaives' }),
   // Chaos
   kit('chaos-space-marines', 'Chaos Space Marines Chaos Terminators', 65, 5, 180, { kit: 'Chaos Terminators' }),
   kit('chaos-space-marines', 'Chaos Space Marines Legionaries', 60, 10, 180, { kit: 'Legionaries' }),
@@ -182,7 +192,7 @@ const LIST = [
   // Xenos
   kit('orks', 'Ork Boyz', 55, 10, 80, { GBP: 35, EUR: 45, kit: 'Boyz', popular: true }),
   kit('orks', 'Ork Beast Snagga Boyz', 55, 10, 95, { kit: 'Beast Snagga Boyz' }),
-  kit('necrons', 'Necron Warriors', 60, null, null, { GBP: 40, EUR: 50, kit: 'Warriors', popular: true }),
+  kit('necrons', 'Necron Warriors', 60, 10, null, { GBP: 40, EUR: 50, kit: 'Warriors', popular: true }),
   kit('necrons', 'Necron Lychguard', 60, 5, 85, { kit: 'Lychguard' }),
   kit('tyranids', 'Tyranids Termagants', 50, 10, 60, { GBP: 32.5, EUR: 40, kit: 'Termagants', popular: true }),
   kit('tyranids', 'Tyranids Hormagaunts', 50, 10, 65, { kit: 'Hormagaunts' }),
@@ -198,7 +208,59 @@ const LIST = [
   entry('paint', 'hobby', 'Citadel Colour Base Paint Set', 50, { conf: 'low', kit: 'Base Paint Set' }),
 ];
 
-export const CATALOG = Object.freeze(LIST.map((e) => Object.freeze(e)));
+// ---- datasheet links ---------------------------------------------------------------------
+const normName = (s) => String(s).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/['’]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+// Datasheets shared between related armies (a Chaos Rhino is the same box for
+// every Chaos legion; a Land Raider for every Astartes army).
+const FAMILIES = [
+  ['Space Marines', 'Ultramarines', 'Imperial Fists', 'Iron Hands', 'Raven Guard', 'Salamanders', 'White Scars',
+    'Blood Angels', 'Dark Angels', 'Space Wolves', 'Black Templars', 'Deathwatch', 'Grey Knights'],
+  ['Chaos Space Marines', 'Death Guard', 'Thousand Sons', 'World Eaters', "Emperor's Children", 'Chaos Daemons'],
+  ['Astra Militarum', 'Adepta Sororitas', 'Adeptus Mechanicus', 'Agents of the Imperium', 'Adeptus Custodes'],
+  ['Imperial Knights'], ['Chaos Knights'],
+];
+const UNITS_BY_NAME = new Map();
+for (const u of ALL_UNITS) {
+  const k = normName(u.name);
+  if (!UNITS_BY_NAME.has(k)) UNITS_BY_NAME.set(k, []);
+  UNITS_BY_NAME.get(k).push(u);
+}
+/** Combat factions a catalogue faction's kits can serve. */
+function familyOf(factionId) {
+  const name = factionById(factionId)?.name?.replace(/’/g, "'");
+  return new Set(FAMILIES.find((f) => f.includes(name)) ?? [name]);
+}
+/** Datasheet ids (in the faction's family) with exactly these names. */
+export function linkUnits(factionId, names) {
+  const fam = familyOf(factionId);
+  const out = [];
+  for (const n of names) {
+    for (const u of UNITS_BY_NAME.get(normName(n)) ?? []) if (fam.has(u.faction) && !out.includes(u.id)) out.push(u.id);
+  }
+  return out;
+}
+
+// Hand-priced kits: attach their datasheets.
+for (const e of LIST) if (CATALOGUE_KIT_UNITS[e.id]) e.units = linkUnits(e.faction, CATALOGUE_KIT_UNITS[e.id]);
+
+// Unpriced kits from kits.js (RRP from store list prices only).
+for (const [faction, rows] of Object.entries(KITS)) {
+  const fname = factionById(faction).name;
+  for (const [kitName, models, o = {}] of rows) {
+    // "Chaos Rhino" -> "Chaos Space Marines Rhino" (stores prefix the faction).
+    const name = o.name ?? (kitName.startsWith(fname) ? kitName
+      : `${fname} ${kitName.startsWith(`${fname.split(' ')[0]} `) ? kitName.slice(fname.split(' ')[0].length + 1) : kitName}`);
+    const kitWords = o.kit ?? kitName;
+    const aliases = [...(o.aliases ?? [])];
+    // "Heavy Intercessor Squad" is often sold as "Heavy Intercessors".
+    if (/ Squad$/.test(kitWords)) aliases.push(`${fname} ${kitWords.replace(/ Squad$/, '')}`);
+    const units = linkUnits(faction, [...(o.units ?? [kitName]), ...(o.also ?? [])]);
+    LIST.push(entry('kit', faction, name, null, { kit: kitWords, models, aliases, units, popular: o.popular }));
+  }
+}
+
+export const CATALOG = Object.freeze(LIST.map((e) => Object.freeze({ ...e, units: Object.freeze([...e.units]) })));
 const BY_ID = new Map(CATALOG.map((e) => [e.id, e]));
 export const productById = (id) => BY_ID.get(id) ?? null;
 

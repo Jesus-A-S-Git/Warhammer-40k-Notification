@@ -32,6 +32,8 @@ through the **contracts** below. Re-use this workflow for future features.
 | Price agent | `src/price/`, `public/prices.html`, `public/prices.js`, `test/price*.test.js` | anything else |
 | Combat agent | `src/combat/`, `public/combat.html`, `public/combat.js`, `test/combat*.test.js` | anything else |
 | Reviewer | nothing (read-only); returns a findings list | — |
+| Data agent (v2) | `src/price/`, `scripts/`, `public/static-api.js`, `.github/workflows/`, `test/price*.test.js`, `test/army-*.test.js` | other `public/*` |
+| Experience agent (v2) | `public/*` pages, styles and UI scripts | `public/static-api.js`, `src/` |
 
 ## Contracts
 
@@ -58,11 +60,31 @@ through the **contracts** below. Re-use this workflow for future features.
 * `src/combat/routes.js` exports `combatRouter` mounted at `/api/combat`.
 * Errors: JSON `{ error: string }` with a 4xx or 5xx status.
 
+### Deal Finder API v2 (Data agent ↔ Experience agent)
+* Payload builders live in `src/price/api.js` (overview, product, faction, RSS) and `src/price/army.js`
+  (army list pricer). Both `src/price/routes.js` and `public/static-api.js` call them, so the static site
+  and the server return the same shapes; `test/price-static-parity.test.js` enforces it.
+* ProductCard / Offer shapes and the endpoint list are documented in the README ("Deal Finder data and API").
+  Unknown values are `null`, never missing keys. Add fields; don't rename or remove them.
+* Pages link the feed with the relative path `data/deals.xml` (served by the server and published by the static build).
+
 ### Frontend
 * Static files in `public/`, no build step, vanilla ES modules.
 * Shared look: `public/styles.css` (design tokens + component classes, dark/light).
   `public/ui.js` handles nav highlighting, the theme toggle and the mobile menu, and exports
   `toast`, `el`, `fmtMoney`, `debounce`, `currentTheme`, `setTheme`.
 * Each page uses the shared skeleton: inline theme script in `<head>`, `styles.css`, `ui.js`,
-  `header.site` nav (Home · Deal Finder · Damage Simulator + `.theme-toggle`), `.page-head`, `footer.site`.
+  `header.site` nav (Deals · Factions · Army pricer · Damage simulator, search button for the Ctrl/⌘K palette,
+  watchlist star, `.theme-toggle`), `footer.site`.
 * `test/ui.test.js` asserts every contract class/token exists; extend it when adding to the contract.
+* Pages: `index.html` (deal hub), `deals.html`, `faction.html[?id=]`, `product.html?id=`, `army.html`,
+  `watchlist.html`, `prices.html` (price tools: cart optimizer, value per model, store search, method),
+  `combat.html[?attacker=&defender=]`.
+* Shared modules in `public/app/`: `api.js` is the only data layer (calls the API in server mode and
+  `static-api.js` in static mode; caches the overview for 3 minutes), plus `kit.js`, `chart.js`,
+  `search.js`, `palette.js`, `watch.js`, `browse.js` and one script per page.
+* Price API v2 shapes are documented in README.md (ProductCard, /product/:id, /faction/:id, /army, RSS).
+  Server routes and `static-api.js` share builders in `src/price/api.js` / `army.js`;
+  `test/price-static-parity.test.js` keeps them identical.
+* `test/ui-pages.test.js` checks every page has the shared shell, relative links only, resolvable
+  module imports and lazy no-referrer https images.

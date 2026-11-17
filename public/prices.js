@@ -32,7 +32,7 @@ const state = {
   watch: store.get(K.watch, []).filter((x) => x && typeof x.id === 'string'),
   ship: store.get(K.ship, {}),
   prefs: store.get(K.prefs, {}),
-  demo: false, tab: 'deals', product: null,
+  demo: false, tab: 'cart', product: null,
 };
 
 /* ------------------------------------------------------------------ helpers */
@@ -54,18 +54,11 @@ function ago(iso) {
   if (h < 36) return `${Math.round(h)}h ago`;
   return `${Math.round(h / 24)} days ago`;
 }
-const fmtDate = (iso) => { const d = new Date(iso); return Number.isNaN(+d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
-const CONF = { medium: 'medium confidence', low: 'low confidence: verify' };
 const CAT_NAME = (id) => state.catalog?.categories.find((c) => c.id === id)?.name ?? id;
 const factionColor = (id) => state.catalog?.factions.find((f) => f.id === id)?.color ?? '#888';
 const storeName = (id) => state.retailers.find((r) => r.id === id)?.name ?? state.overview?.stores.find((s) => s.id === id)?.name ?? id;
 const storeCaution = (id) => state.overview?.stores.find((s) => s.id === id)?.caution ?? null;
 const dot = (faction) => el('span', { class: 'faction-dot', style: { '--c': factionColor(faction) }, 'aria-hidden': 'true' });
-function scoreBadge(deal) {
-  if (deal?.score == null) return null;
-  const kind = deal.score >= 80 ? 'good' : deal.score >= 55 ? 'accent' : deal.score >= 30 ? 'info' : 'warn';
-  return el('span', { class: `badge ${kind}`, title: `Deal score ${deal.score}/100` }, `${deal.label} · ${deal.score}`);
-}
 function stockBadge(s) {
   if (s === true) return el('span', { class: 'badge good' }, 'In stock');
   if (s === false) return el('span', { class: 'badge bad' }, 'Out of stock');
@@ -83,39 +76,13 @@ async function getJson(path, opts) {
 }
 
 /* ------------------------------------------------------------------ charts */
-function lineChart(points, { width = 400, height = 160, rrp = null, spark = false } = {}) {
-  const ns = 'http://www.w3.org/2000/svg';
-  const mk = (tag, attrs) => { const n = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v)); return n; };
-  const pad = spark ? { l: 2, r: 2, t: 3, b: 3 } : { l: 44, r: 10, t: 10, b: 22 };
-  const vals = points.map((p) => p.p).concat(rrp && !spark ? [rrp] : []);
-  let lo = Math.min(...vals); let hi = Math.max(...vals);
-  if (hi - lo < 1) { hi += 1; lo -= 1; }
-  const x = (i) => pad.l + (points.length < 2 ? 0 : (i / (points.length - 1)) * (width - pad.l - pad.r));
-  const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (height - pad.t - pad.b);
-  const svg = mk('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', class: spark ? 'spark' : '',
-    'aria-label': `Best price history: ${points.map((p) => `${fmtDate(p.t)} ${money(p.p)}`).join(', ')}` });
-  if (!spark) {
-    for (const v of [lo, hi]) {
-      svg.append(mk('line', { class: 'gridline', x1: pad.l, x2: width - pad.r, y1: y(v), y2: y(v) }));
-      const t = mk('text', { class: 'label', x: 4, y: y(v) + 4 }); t.textContent = money(v); svg.append(t);
-    }
-    svg.append(mk('line', { class: 'axis', x1: pad.l, x2: width - pad.r, y1: height - pad.b, y2: height - pad.b }));
-    if (rrp) {
-      svg.append(mk('line', { class: 'series-alt', x1: pad.l, x2: width - pad.r, y1: y(rrp), y2: y(rrp), 'stroke-dasharray': '4 4' }));
-      const t = mk('text', { class: 'label', x: width - pad.r - 30, y: y(rrp) - 4 }); t.textContent = 'RRP'; svg.append(t);
-    }
-    const first = mk('text', { class: 'label', x: pad.l, y: height - 6 }); first.textContent = fmtDate(points[0].t); svg.append(first);
-    const last = mk('text', { class: 'label', x: width - pad.r, y: height - 6, 'text-anchor': 'end' }); last.textContent = fmtDate(points.at(-1).t); svg.append(last);
-  }
-  svg.append(mk('polyline', { class: 'series', points: points.map((p, i) => `${x(i).toFixed(1)},${y(p.p).toFixed(1)}`).join(' ') }));
-  if (!spark) points.forEach((p, i) => svg.append(mk('circle', { class: 'series', cx: x(i), cy: y(p.p), r: 2.5 })));
-  return el('div', { class: spark ? 'chart' : 'card chart hist' }, svg);
-}
 
 /* ------------------------------------------------------------------ tabs + routing */
-const TABS = ['deals', 'browse', 'product', 'cart', 'watch', 'value', 'search', 'stores'];
+const TABS = ['cart', 'value', 'search', 'stores'];
+// Deals, browsing, product pages and the watchlist moved to their own pages.
+const MOVED = { deals: 'deals.html', browse: 'deals.html', watch: 'watchlist.html' };
 function showTab(name, { push = true } = {}) {
-  if (!TABS.includes(name)) name = 'deals';
+  if (!TABS.includes(name)) name = 'cart';
   state.tab = name;
   for (const t of TABS) {
     $(`tab-${t}`).setAttribute('aria-selected', String(t === name));
@@ -139,40 +106,14 @@ document.querySelector('.tabs').addEventListener('keydown', (e) => {
   showTab(next); $(`tab-${next}`).focus();
 });
 function openProduct(id) {
-  if (!state.products.has(id) && !state.catalog?.products.some((p) => p.id === id)) return;
-  state.product = id;
-  $('tab-product').hidden = false;
-  $('tab-product').textContent = 'Product';
-  showTab('product');
-  window.scrollTo({ top: $('tab-product').getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' });
+  location.href = `product.html?id=${encodeURIComponent(id)}`;
 }
 
 /* ------------------------------------------------------------------ cart + watch actions */
 function saveCart() { store.set(K.cart, state.cart); updateCounts(); }
-function saveWatch() { store.set(K.watch, state.watch); updateCounts(); }
-function addToCart(id, qty = 1) {
-  const it = state.cart.find((x) => x.id === id);
-  if (it) it.qty = Math.min(99, it.qty + qty); else state.cart.push({ id, qty });
-  saveCart();
-  toast(`Added ${productName(id)} to the cart`, 'good');
-  cartDirty = true;
-}
-const watched = (id) => state.watch.find((w) => w.id === id);
-function toggleWatch(id, target) {
-  const w = watched(id);
-  if (w && target === undefined) { state.watch = state.watch.filter((x) => x.id !== id); toast(`Removed ${productName(id)} from the watchlist`); }
-  else if (w) w.target = target;
-  else {
-    state.watch.push({ id, target: target ?? null, addedAt: new Date().toISOString() });
-    toast(`Watching ${productName(id)}`, 'good');
-  }
-  saveWatch();
-  render();
-}
 function updateCounts() {
   const n = state.cart.reduce((t, x) => t + x.qty, 0);
   $('tab-cart').textContent = n ? `Cart optimizer (${n})` : 'Cart optimizer';
-  $('tab-watch').textContent = state.watch.length ? `Watchlist (${state.watch.length})` : 'Watchlist';
 }
 const productName = (id) => state.products.get(id)?.name ?? state.catalog?.products.find((p) => p.id === id)?.name ?? id;
 
@@ -218,59 +159,10 @@ function makeCombo(input, list, onPick) {
 }
 
 /* ------------------------------------------------------------------ deal selection under filters */
-function filters() {
-  return {
-    faction: $('f-faction').value, cats: [...$('f-cat').querySelectorAll('[aria-pressed=true]')].map((b) => b.dataset.cat),
-    max: Number($('f-max').value) || null, store: $('f-store').value, stock: $('f-stock').checked,
-    trusted: $('f-trusted').checked, withOffers: $('f-offers').checked,
-    sort: $('f-sort').querySelector('[aria-pressed=true]')?.dataset.sort ?? 'score',
-  };
-}
 /** Best offer for a product among offers allowed by the filters (lowest delivered total). */
-function pickBest(p, f = {}) {
-  const ok = p.offers.filter((o) => !o.flags?.includes('suspicious') && o.deal
-    && (!f.store || o.retailerId === f.store) && (!f.trusted || !storeCaution(o.retailerId))
-    && (f.stock === false ? true : o.inStock === true));
-  ok.sort((a, b) => a.deal.total - b.deal.total);
-  return ok[0] ?? null;
-}
-const SORTS = {
-  score: (a, b) => (b.b?.deal.score ?? -1) - (a.b?.deal.score ?? -1),
-  total: (a, b) => (a.b?.deal.total ?? Infinity) - (b.b?.deal.total ?? Infinity),
-  off: (a, b) => (b.b?.deal.pctOff ?? -999) - (a.b?.deal.pctOff ?? -999),
-  price: (a, b) => (a.b?.deal.price ?? Infinity) - (b.b?.deal.price ?? Infinity),
-};
+
 
 /* ------------------------------------------------------------------ product card */
-function productCard(p, best = p.best) {
-  const w = watched(p.id);
-  const d = best?.deal;
-  const hit = w?.target != null && d && d.price <= w.target;
-  return el('article', { class: 'card deal-card' },
-    el('div', { class: 'card-title' }, dot(p.faction),
-      el('button', { type: 'button', class: 'linkish', onclick: () => openProduct(p.id) }, p.name)),
-    el('div', { class: 'row tight' }, el('span', { class: 'tag' }, CAT_NAME(p.category)),
-      p.factionName && p.faction !== 'multi' && p.faction !== 'hobby' ? el('span', { class: 'tag' }, p.factionName) : null,
-      scoreBadge(d)),
-    d ? el('div', { class: 'stack tight' },
-      el('div', { class: 'row tight' }, el('span', { class: 'price' }, money(d.price)),
-        p.msrp ? el('span', { class: 'strike', title: 'Approximate RRP' }, money(p.msrp)) : null,
-        d.pctOff > 0 ? el('span', { class: 'savings' }, `Save ${d.pctOff}% (${money(d.savings)})`) : null),
-      el('div', { class: 'small muted' }, `≈ ${money(d.total)} delivered (est.) at ${best.retailerName}`),
-      d.score != null ? el('div', { class: `bar ${d.score >= 55 ? 'good' : d.score >= 30 ? '' : 'warn'}`, style: { '--pct': `${d.score}%` },
-        role: 'img', 'aria-label': `Deal score ${d.score} of 100` }, el('span')) : null,
-      el('div', { class: 'row tight' },
-        el('span', { class: 'badge good' }, `${p.inStockCount} store${p.inStockCount === 1 ? '' : 's'} in stock`),
-        p.atLowest && p.history.length > 1 ? el('span', { class: 'badge accent', title: 'Lowest price recorded in the snapshot history' }, 'Lowest seen') : null,
-        hit ? el('span', { class: 'badge good' }, `≤ your target ${money(w.target)}`) : null,
-        best.carried ? el('span', { class: 'badge warn', title: `Price from ${ago(best.fetchedAt)}` }, 'Older price') : null))
-      : el('p', { class: 'muted small' }, `No current in-stock price from the tracked stores. RRP ≈ ${money(p.msrp)}.`),
-    el('div', { class: 'row tight actions' },
-      el('button', { type: 'button', class: 'btn secondary sm', onclick: () => openProduct(p.id) }, 'Details'),
-      el('button', { type: 'button', class: 'btn sm', onclick: () => addToCart(p.id) }, 'Add to cart'),
-      el('button', { type: 'button', class: 'btn ghost sm', 'aria-pressed': String(!!w), onclick: () => toggleWatch(p.id) }, w ? '★ Watching' : '☆ Watch')),
-  );
-}
 
 /* ------------------------------------------------------------------ status header */
 function renderStatus() {
@@ -321,58 +213,7 @@ function renderStatus() {
 }
 
 /* ------------------------------------------------------------------ panels */
-function renderDeals() {
-  const panel = $('panel-deals'); const ov = state.overview;
-  if (!ov) { fill(panel, el('div', { class: 'empty' }, el('strong', {}, 'No deals yet'), el('span', {}, 'Prices appear here after the first refresh.'))); return; }
-  const top = ov.topDeals.map((id) => ov.products.find((p) => p.id === id)).filter(Boolean);
-  const alerts = state.watch.map((w) => [w, ov.products.find((p) => p.id === w.id)])
-    .filter(([w, p]) => w.target != null && p?.best && p.best.deal.price <= w.target);
-  fill(panel, 
-    alerts.length ? el('div', { class: 'callout good' }, el('strong', {}, 'Price alert: '),
-      alerts.map(([w, p], i) => [i ? ', ' : '', el('button', { type: 'button', class: 'linkish', onclick: () => openProduct(p.id) }, p.name),
-        ` ${money(p.best.deal.price)} (target ${money(w.target)})`])) : null,
-    el('h2', { class: 'section-title' }, 'Top deals right now'),
-    el('p', { class: 'muted small' }, 'Biggest savings across the catalogue, ranked by deal score: estimated delivered price to ',
-      ov.home?.label ?? 'you', ' (price + shipping + sales tax) against buying at RRP. In-stock offers from vetted stores only.'),
-    top.length ? el('div', { class: 'grid' }, top.map((p) => productCard(p))) : el('div', { class: 'empty' }, el('strong', {}, 'No discounted in-stock products in this snapshot.')),
-    ...categoryHighlights(ov),
-  );
-}
-function categoryHighlights(ov) {
-  // Cheapest Combat Patrol / codex / starter right now: the most common "first buys".
-  const out = [];
-  for (const cat of ['combat-patrol', 'starter', 'codex']) {
-    const ps = ov.products.filter((p) => p.category === cat && p.best).sort((a, b) => a.best.deal.total - b.best.deal.total);
-    if (!ps.length) continue;
-    out.push(el('h2', { class: 'section-title' }, `Cheapest ${CAT_NAME(cat).toLowerCase()}`),
-      el('div', { class: 'table-wrap' }, el('table', {},
-        el('thead', {}, el('tr', {}, el('th', {}, 'Product'), el('th', { class: 'num' }, 'Price'), el('th', { class: 'num opt' }, 'RRP'),
-          el('th', { class: 'num' }, 'Delivered (est.)'), el('th', { class: 'opt' }, 'Store'))),
-        el('tbody', {}, ps.slice(0, 6).map((p, i) => el('tr', { class: i === 0 ? 'best' : null },
-          el('td', {}, dot(p.faction), ' ', el('button', { type: 'button', class: 'linkish', onclick: () => openProduct(p.id) }, p.name)),
-          el('td', { class: 'num' }, money(p.best.deal.price), p.best.deal.pctOff > 0 ? el('span', { class: 'cell-sub savings' }, `-${p.best.deal.pctOff}%`) : null),
-          el('td', { class: 'num opt' }, money(p.msrp)),
-          el('td', { class: 'num' }, money(p.best.deal.total)),
-          el('td', { class: 'opt' }, p.best.retailerName)))))));
-  }
-  return out;
-}
 
-function renderBrowse() {
-  const ov = state.overview; const f = filters();
-  if (!ov) { fill($('browse-list')); $('browse-count').textContent = 'No snapshot loaded.'; return; }
-  let rows = ov.products.map((p) => ({ p, b: pickBest(p, f) }))
-    .filter(({ p, b }) => (!f.faction || p.faction === f.faction || state.catalog.factions.find((x) => x.id === p.faction)?.parent === f.faction)
-      && (!f.cats.length || f.cats.includes(p.category))
-      && (!f.withOffers || b) && (!f.max || (b && b.deal.price <= f.max)));
-  rows.sort((a, b) => SORTS[f.sort](a, b) || a.p.name.localeCompare(b.p.name));
-  $('browse-count').textContent = `${rows.length} product${rows.length === 1 ? '' : 's'}`;
-  const LIMIT = 60;
-  fill($('browse-list'), ...(rows.length ? rows.slice(0, LIMIT).map(({ p, b }) => productCard(p, b))
-    : [el('div', { class: 'empty' }, el('strong', {}, 'Nothing matches these filters'), el('span', {}, 'Try another faction, untick “In stock only”, or raise the max price.'))]),
-  rows.length > LIMIT ? el('p', { class: 'muted' }, `Showing the first ${LIMIT}. Narrow the filters to see the rest.`) : null);
-  store.set(K.prefs, { ...state.prefs, filters: f });
-}
 
 function offerRow(o, isBest) {
   const d = o.deal;
@@ -400,75 +241,6 @@ function offersTable(offers, bestUrl) {
     el('tbody', {}, offers.map((o) => offerRow(o, o.url === bestUrl)))));
 }
 
-function renderProduct() {
-  const panel = $('panel-product');
-  const p = state.products.get(state.product);
-  const c = state.catalog?.products.find((x) => x.id === state.product);
-  if (!p && !c) { fill(panel, el('div', { class: 'empty' }, el('strong', {}, 'Pick a product above'))); return; }
-  const info = p ?? { ...c, offers: [], best: null, history: [], lowest: null, msrp: c.USD, inStockCount: 0 };
-  const d = info.best?.deal;
-  const w = watched(info.id);
-  let qty = 1;
-  const qtyInput = el('input', { type: 'number', min: '1', max: '99', value: '1', 'aria-label': 'Quantity', class: 'w-num',
-    oninput: (e) => { qty = Math.max(1, Math.min(99, Number(e.target.value) || 1)); } });
-  const target = el('input', { type: 'number', min: '0', step: '1', inputmode: 'decimal', id: 'p-target', placeholder: d ? String(Math.floor(d.price * 0.9)) : 'e.g. 120',
-    value: w?.target ?? '' });
-  const liveBox = el('div', { class: 'stack' });
-  fill(panel, 
-    el('div', { class: 'row' }, dot(info.faction), el('h2', { style: { margin: 0 } }, info.name), el('span', { class: 'spacer' }),
-      el('button', { type: 'button', class: 'btn ghost sm', onclick: () => showTab('browse') }, '← Back to browse')),
-    el('div', { class: 'row tight' }, el('span', { class: 'tag' }, CAT_NAME(info.category)),
-      info.factionName ? el('span', { class: 'tag' }, info.factionName) : null,
-      el('span', { class: 'muted small' }, `RRP ≈ ${money(info.msrp)} (${CONF[info.conf] ?? 'approximate'}, ${state.catalog?.asOf ?? 'approx.'})`),
-      info.models ? el('span', { class: 'muted small' }, `${info.models} models`) : null,
-      info.points ? el('span', { class: 'muted small' }, `≈${info.points} pts (rough)`) : null),
-    el('div', { class: 'stats' },
-      el('div', { class: 'stat accent' }, el('div', { class: 'stat-label' }, 'Best delivered (est.)'),
-        el('div', { class: 'stat-value' }, d ? money(d.total) : '—'),
-        el('div', { class: 'stat-sub' }, d ? `${money(d.price)} at ${info.best.retailerName}` : 'no in-stock offer')),
-      el('div', { class: 'stat good' }, el('div', { class: 'stat-label' }, 'Off RRP'),
-        el('div', { class: 'stat-value' }, d?.pctOff != null ? `${d.pctOff}%` : '—'),
-        el('div', { class: 'stat-sub' }, d?.savings != null ? `you save ≈ ${money(d.savings)}` : '')),
-      el('div', { class: 'stat' }, el('div', { class: 'stat-label' }, 'Lowest seen'),
-        el('div', { class: 'stat-value' }, info.lowest ? money(info.lowest.p) : '—'),
-        el('div', { class: 'stat-sub' }, info.lowest ? `${fmtDate(info.lowest.t)} · ${storeName(info.lowest.r)}${info.atLowest ? ' · that’s now!' : ''}` : 'no history yet')),
-      el('div', { class: 'stat' }, el('div', { class: 'stat-label' }, 'Deal score'),
-        el('div', { class: 'stat-value' }, d?.score != null ? `${d.score}` : '—'),
-        el('div', { class: 'stat-sub' }, d?.label ?? ''))),
-    el('div', { class: 'card compact' }, el('div', { class: 'row' },
-      el('div', { class: 'field', style: { margin: 0 } }, el('label', {}, 'Quantity'), el('div', { class: 'row tight' }, qtyInput,
-        el('button', { type: 'button', class: 'btn', onclick: () => addToCart(info.id, qty) }, 'Add to cart'))),
-      el('span', { class: 'spacer' }),
-      el('div', { class: 'field', style: { margin: 0 } }, el('label', { for: 'p-target' }, 'Alert me at or below (item price)'),
-        el('div', { class: 'row tight' }, el('div', { class: 'input-group' }, el('span', { class: 'addon' }, '$'), target),
-          el('button', { type: 'button', class: 'btn secondary', onclick: () => {
-            const t = target.value === '' ? null : Math.max(0, Number(target.value));
-            if (watched(info.id)) toggleWatch(info.id, t); else { toggleWatch(info.id); if (t != null) toggleWatch(info.id, t); }
-          } }, w ? 'Update watch' : 'Watch'),
-          w ? el('button', { type: 'button', class: 'btn ghost', onclick: () => toggleWatch(info.id) }, 'Unwatch') : null)))),
-    info.note ? el('div', { class: 'callout info small' }, info.note) : null,
-    info.history.length > 1 ? el('div', { class: 'stack tight' }, el('h3', { class: 'section-title' }, 'Best in-stock price history'),
-      lineChart(info.history, { rrp: info.msrp }),
-      el('p', { class: 'hint' }, `${info.history.length} refreshes; one point per day, last 30 kept${state.overview?.snapshot.demo ? ' (sample history)' : ''}.`)) : null,
-    el('h3', { class: 'section-title' }, `Offers (${info.offers.length})`),
-    info.offers.length ? offersTable(info.offers, info.best?.url)
-      : el('div', { class: 'empty' }, el('strong', {}, 'No listings in the latest snapshot'), el('span', {}, STATIC ? 'Try “Search stores”.' : 'Try checking live prices below.')),
-    el('p', { class: 'hint' }, 'Delivered = price + estimated shipping for this item alone + estimated sales tax (or import duty). Buying several items? Use the cart optimizer.'),
-    !STATIC ? el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn secondary', onclick: (e) => liveCheck(info, e.currentTarget, liveBox) }, 'Check live prices now'),
-      el('span', { class: 'hint' }, 'Searches the stores once, politely rate-limited; can take up to a minute.')) : null,
-    liveBox,
-  );
-}
-async function liveCheck(info, btn, box) {
-  btn.setAttribute('aria-busy', 'true'); btn.disabled = true;
-  fill(box, el('p', { class: 'muted' }, el('span', { class: 'spinner' }), ' Asking the stores…'));
-  try {
-    const data = await getJson(`/api/prices/search?${new URLSearchParams({ q: info.name, region: 'US', currency: 'USD' })}`);
-    fill(box, searchResults(data));
-  } catch (err) {
-    fill(box, el('p', { class: 'error' }, err.message));
-  } finally { btn.removeAttribute('aria-busy'); btn.disabled = false; }
-}
 
 /* ---- search stores (live in server mode, snapshot on the static site) ---- */
 function renderSearchPanel() {
@@ -626,41 +398,6 @@ function shippingEditor() {
 }
 
 /* ---- watchlist ---- */
-function renderWatch() {
-  const panel = $('panel-watch');
-  if (!state.watch.length) {
-    fill(panel, el('div', { class: 'empty' }, el('strong', {}, 'Nothing watched yet'),
-      el('span', {}, 'Press “☆ Watch” on any product and set a target price. Products at or below target are highlighted here and on Top deals.')));
-    return;
-  }
-  const rows = state.watch.map((w) => {
-    const p = state.products.get(w.id);
-    const d = p?.best?.deal;
-    const hit = w.target != null && d && d.price <= w.target;
-    const target = el('input', { type: 'number', min: '0', step: '1', inputmode: 'decimal', class: 'w-num', value: w.target ?? '', placeholder: 'none',
-      'aria-label': `Target price for ${productName(w.id)}`,
-      onchange: (e) => { w.target = e.target.value === '' ? null : Math.max(0, Number(e.target.value)); saveWatch(); render(); } });
-    return el('tr', { class: hit ? 'best' : null },
-      el('td', {}, el('button', { type: 'button', class: 'linkish', onclick: () => openProduct(w.id) }, productName(w.id)),
-        p?.msrp ? el('span', { class: 'cell-sub' }, `RRP ≈ ${money(p.msrp)}`) : null),
-      el('td', {}, el('div', { class: 'input-group' }, el('span', { class: 'addon' }, '$'), target)),
-      el('td', { class: 'num' }, d ? money(d.price) : '—', d ? el('span', { class: 'cell-sub' }, `${p.best.retailerName} · ${money(d.total)} delivered`) : el('span', { class: 'cell-sub' }, 'no in-stock offer')),
-      el('td', {}, hit ? el('span', { class: 'badge good' }, 'At or below target') : w.target != null && d
-        ? el('span', { class: 'badge info' }, `${money(d.price - w.target)} to go`) : el('span', { class: 'muted small' }, w.target == null ? 'no target' : 'no price'),
-      p?.atLowest && p.history.length > 1 ? el('span', { class: 'cell-sub text-accent' }, 'lowest seen') : null),
-      el('td', { class: 'num opt' }, p?.lowest ? money(p.lowest.p) : '—', p?.lowest ? el('span', { class: 'cell-sub' }, fmtDate(p.lowest.t)) : null),
-      el('td', { class: 'opt' }, p?.history?.length > 1 ? lineChart(p.history, { width: 120, height: 32, spark: true }) : el('span', { class: 'muted small' }, 'no history')),
-      el('td', {}, el('button', { type: 'button', class: 'btn icon ghost', 'aria-label': `Stop watching ${productName(w.id)}`, onclick: () => toggleWatch(w.id) }, '×')));
-  });
-  const hits = state.watch.filter((w) => { const d = state.products.get(w.id)?.best?.deal; return w.target != null && d && d.price <= w.target; });
-  fill(panel, 
-    hits.length ? el('div', { class: 'callout good' }, el('strong', {}, `${hits.length} item${hits.length === 1 ? ' is' : 's are'} at or below your target.`)) : null,
-    el('div', { class: 'table-wrap' }, el('table', {},
-      el('thead', {}, el('tr', {}, el('th', {}, 'Product'), el('th', {}, 'Target'), el('th', { class: 'num' }, 'Best now'), el('th', {}, 'Status'),
-        el('th', { class: 'num opt' }, 'Lowest seen'), el('th', { class: 'opt' }, 'Trend'), el('th', {}, el('span', { class: 'visually-hidden' }, 'Remove')))),
-      el('tbody', {}, rows))),
-    el('p', { class: 'hint' }, 'Targets compare with the best in-stock item price (before shipping and tax). The watchlist is stored in this browser only; prices update when the snapshot refreshes.'));
-}
 
 /* ---- value per model / point ---- */
 function renderValue() {
@@ -760,11 +497,7 @@ function render() {
   renderStatus();
   updateCounts();
   switch (state.tab) {
-    case 'deals': renderDeals(); break;
-    case 'browse': renderBrowse(); break;
-    case 'product': renderProduct(); break;
     case 'cart': renderCart(); break;
-    case 'watch': renderWatch(); break;
     case 'value': renderValue(); break;
     case 'search': renderSearchPanel(); break;
     case 'stores': renderStores(); break;
@@ -773,43 +506,6 @@ function render() {
 }
 
 /* ------------------------------------------------------------------ browse filter wiring */
-function setupFilters() {
-  const f = state.prefs.filters ?? {};
-  const fac = $('f-faction');
-  const groups = new Map();
-  for (const x of state.catalog.factions) {
-    if (!state.catalog.products.some((p) => p.faction === x.id)) continue;
-    if (!groups.has(x.group)) groups.set(x.group, el('optgroup', { label: x.group }));
-    groups.get(x.group).append(el('option', { value: x.id }, x.name));
-  }
-  fac.append(...groups.values());
-  fill($('f-cat'), ...state.catalog.categories.map((c) => el('button', { type: 'button', class: 'chip', 'data-cat': c.id,
-    'aria-pressed': String((f.cats ?? []).includes(c.id)), title: c.blurb,
-    onclick: (e) => { const b = e.currentTarget; b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); renderBrowse(); } }, c.name)));
-  const stores = (state.overview?.stores ?? []).filter((s) => s.status !== 'skipped' && !s.blocked);
-  $('f-store').append(...stores.map((s) => el('option', { value: s.id }, s.name)));
-  if (f.faction) fac.value = f.faction;
-  if (f.max) $('f-max').value = f.max;
-  if (f.store) $('f-store').value = f.store;
-  if (typeof f.stock === 'boolean') $('f-stock').checked = f.stock;
-  if (typeof f.trusted === 'boolean') $('f-trusted').checked = f.trusted;
-  if (typeof f.withOffers === 'boolean') $('f-offers').checked = f.withOffers;
-  if (f.sort) for (const b of $('f-sort').children) b.setAttribute('aria-pressed', String(b.dataset.sort === f.sort));
-  const rerender = debounce(renderBrowse, 120);
-  for (const id of ['f-faction', 'f-store', 'f-stock', 'f-trusted', 'f-offers']) $(id).addEventListener('change', renderBrowse);
-  $('f-max').addEventListener('input', rerender);
-  $('f-sort').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-sort]'); if (!b) return;
-    for (const x of $('f-sort').children) x.setAttribute('aria-pressed', String(x === b));
-    renderBrowse();
-  });
-  $('f-reset').addEventListener('click', () => {
-    fac.value = ''; $('f-max').value = ''; $('f-store').value = ''; $('f-stock').checked = true; $('f-trusted').checked = false; $('f-offers').checked = true;
-    for (const b of $('f-cat').children) b.setAttribute('aria-pressed', 'false');
-    for (const b of $('f-sort').children) b.setAttribute('aria-pressed', String(b.dataset.sort === 'score'));
-    renderBrowse();
-  });
-}
 
 /* ------------------------------------------------------------------ load */
 async function loadOverview() {
@@ -821,6 +517,13 @@ async function loadOverview() {
   }
   // A snapshot with no offers at all (fresh static build) is "no data".
   if (state.overview && !state.overview.snapshot.generatedAt && !state.overview.snapshot.offers) state.overview = null;
+  // API v2 cards -> the field names the cart/value views were written against.
+  for (const p of state.overview?.products ?? []) {
+    p.msrp ??= p.rrp; p.conf ??= p.rrpConf;
+    if (p.best && !p.best.deal) p.best.deal = { price: p.best.price, total: p.best.delivered, pctOff: p.best.pctOff, savings: p.best.savings, score: p.dealScore, label: p.dealLabel };
+    if (p.lowest && p.lowest.p == null) p.lowest = { p: p.lowest.price, t: p.lowest.date, r: p.lowest.retailerId };
+    p.history ??= []; p.offers ??= [];
+  }
   state.products = new Map((state.overview?.products ?? []).map((p) => [p.id, p]));
   if (state.overview) $('home-label').textContent = state.overview.home?.label ?? 'Seattle, WA';
   $('disclaimer').textContent = state.overview?.disclaimer ?? '';
@@ -846,16 +549,16 @@ async function setDemo(on) {
   }
   try { state.catalog = await getJson('/api/prices/catalog'); } catch (err) { toast(`Could not load the catalogue: ${err.message}`, 'bad'); return; }
   await loadOverview();
-  setupFilters();
   makeCombo($('q'), $('q-list'), (p) => { $('q').value = ''; openProduct(p.id); });
   // Legacy links (?q=...) open the matching product, else the store search.
   const legacy = u.get('q');
   const hash = location.hash.slice(1);
-  if (hash.startsWith('product=')) { openProduct(decodeURIComponent(hash.slice(8))); }
+  if (hash.startsWith('product=')) { openProduct(decodeURIComponent(hash.slice(8))); return; }
+  if (MOVED[hash]) { location.replace(MOVED[hash]); return; }
   else if (legacy) {
     const m = bestMatches(legacy, state.catalog.products, { key: (p) => [p.name, ...(p.aliases ?? [])], limit: 1, threshold: 0.75 })[0];
     if (m) openProduct(m.item.id); else showTab('search');
-  } else showTab(TABS.includes(hash) && hash !== 'product' ? hash : (state.prefs.tab ?? 'deals'), { push: false });
+  } else showTab(TABS.includes(hash) ? hash : (TABS.includes(state.prefs.tab) ? state.prefs.tab : 'cart'), { push: false });
   // Watchlist alerts on arrival.
   const hits = state.watch.filter((w) => { const d = state.products.get(w.id)?.best?.deal; return w.target != null && d && d.price <= w.target; });
   if (hits.length) toast(`${hits.length} watched item${hits.length === 1 ? ' is' : 's are'} at or below your target price`, 'good', { timeout: 6000 });

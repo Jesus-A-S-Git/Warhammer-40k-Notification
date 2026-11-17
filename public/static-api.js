@@ -12,6 +12,8 @@ import { rankOffers, retailersInfo, suggestionsPayload } from './lib/price/rank.
 import { checkOffer } from './lib/price/trust.js';
 import { catalogPayload } from './lib/price/catalog.js';
 import { buildOverview, planCart } from './lib/price/overview.js';
+import { overviewPayload, productPayload, factionPayload } from './lib/price/api.js';
+import { armyPayload, armyRequestError } from './lib/price/army.js';
 
 // Deal Finder overview, computed once per page load from the snapshot.
 let overviewPromise;
@@ -29,7 +31,7 @@ export function loadSnapshot() {
   return snapshotPromise;
 }
 
-const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
+const reply = (status, body) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) });
 
 async function route(method, url, body) {
   const p = url.pathname.replace(/^.*\/api\//, '/api/');
@@ -63,7 +65,7 @@ async function route(method, url, body) {
   if (method === 'GET' && p === '/api/prices/overview') {
     try {
       const ov = await loadOverview();
-      return reply(200, { ...ov, source: 'data/prices.json' });
+      return reply(200, { ...overviewPayload(ov), source: 'data/prices.json' });
     } catch (err) {
       return reply(404, { error: `No price snapshot published yet (${err.message}).` });
     }
@@ -76,6 +78,34 @@ async function route(method, url, body) {
     } catch (err) {
       return reply(404, { error: `No price snapshot published yet (${err.message}).` });
     }
+  }
+  if (method === 'GET' && (p.startsWith('/api/prices/product/') || p.startsWith('/api/prices/faction/'))) {
+    const isProduct = p.startsWith('/api/prices/product/');
+    let id = '';
+    try { id = decodeURIComponent(p.slice(isProduct ? '/api/prices/product/'.length : '/api/prices/faction/'.length)); } catch { /* bad escape */ }
+    const what = isProduct ? 'product' : 'faction';
+    if (!/^[a-z0-9-]{1,120}$/.test(id)) return reply(404, { error: `Unknown ${what} "${id.slice(0, 120)}"` });
+    let ov;
+    try { ov = await loadOverview(); } catch (err) {
+      return reply(404, { error: `No price snapshot published yet (${err.message}).` });
+    }
+    const out = isProduct ? productPayload(ov, id) : factionPayload(ov, id);
+    return out ? reply(200, out) : reply(404, { error: `Unknown ${what} "${id}"` });
+  }
+  if (method === 'POST' && p === '/api/prices/army') {
+    const bad = armyRequestError(body);
+    if (bad) return reply(400, { error: bad });
+    try {
+      return reply(200, armyPayload(await loadOverview(), body.list, body.owned ?? {}, { overrides: body?.shipping }));
+    } catch (err) {
+      return reply(404, { error: `No price snapshot published yet (${err.message}).` });
+    }
+  }
+  if (method === 'GET' && p === '/api/prices/feed.xml') {
+    // The static site publishes the feed as a file next to the snapshot.
+    const r = await fetch('data/deals.xml', { cache: 'no-cache' });
+    const text = r.ok ? await r.text() : '';
+    return { ok: r.ok, status: r.ok ? 200 : 404, json: async () => ({ error: 'No deals feed published yet' }), text: async () => text };
   }
   if (method === 'GET' && p === '/api/prices/suggestions') {
     // Tracked kits + MSRP names + every title in the published snapshot.

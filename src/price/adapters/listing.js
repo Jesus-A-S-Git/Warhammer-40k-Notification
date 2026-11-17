@@ -24,13 +24,27 @@ export function decodeEntities(s) {
 const stripTags = (s) => decodeEntities(String(s).replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const words = (s) => new Set(String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length > 2));
+/** Alt text and title share most of their words. */
+function sameProduct(alt, title) {
+  const a = words(alt); const t = words(title);
+  if (!a.size || !t.size) return false;
+  let n = 0; for (const w of t) if (a.has(w)) n++;
+  return n / t.size >= 0.6;
+}
+
 /** Parse product cards out of a search results page. */
-export function parseListing(html, { cardMarker, linkClass, priceClass }, baseUrl) {
+export function parseListing(html, { cardMarker, linkClass, priceClass, listPriceClass }, baseUrl) {
   const out = [];
-  const cards = String(html).split(cardMarker).slice(1);
+  const segs = String(html).split(cardMarker);
+  const cards = segs.slice(1);
   const linkRe = new RegExp(`<a\\b(?=[^>]*\\bclass="[^"]*\\b${escapeRe(linkClass)}\\b)[^>]*>([\\s\\S]*?)</a>`, 'i');
   const priceRe = new RegExp(`class="[^"]*\\b${escapeRe(priceClass)}\\b[^"]*"[^>]*>\\s*\\$\\s?([\\d,]+(?:\\.\\d{2})?)`, 'i');
-  for (const raw of cards) {
+  // Optional: the store's own list / "retail" price (its RRP figure) shown next to the selling price.
+  const listRe = listPriceClass
+    ? new RegExp(`class="[^"]*\\b${escapeRe(listPriceClass)}\\b[^"]*"[^>]*>\\s*\\$\\s?([\\d,]+(?:\\.\\d{2})?)`, 'i') : null;
+  const imgRe = /<img\b[^>]*?\b(?:data-src|src)="(https?:\/\/[^"]+|\/\/[^"]+|\/[^"]+)"[^>]*>/i;
+  for (const [ci, raw] of cards.entries()) {
     const card = raw.slice(0, 6000); // a card never spans more; stops prices bleeding in from the next one
     const link = card.match(linkRe);
     const price = card.match(priceRe);
@@ -44,7 +58,23 @@ export function parseListing(html, { cardMarker, linkClass, priceClass }, baseUr
     url.hash = '';
     const inStock = /out of stock|sold out|unavailable/i.test(card) ? false
       : /data-add-to-cart="true"|add to cart/i.test(card) ? true : null;
-    out.push({ title, price: amount, url: url.href, inStock });
+    const lp = listRe ? card.match(listRe) : null;
+    const listPrice = lp ? Number.parseFloat(lp[1].replace(/,/g, '')) : NaN;
+    let imageUrl;
+    // The photo is inside the card, or just before it (many themes put the image
+    // block ahead of the info block). One found before the card is only used when
+    // its alt text names this product, so a neighbour's photo is never borrowed.
+    const altOf = (m) => m?.[0].match(/\balt="([^"]*)"/i)?.[1] ?? null;
+    let img = card.slice(0, price.index).match(imgRe); // after the price it is the next product's
+    if (img && altOf(img) && !sameProduct(decodeEntities(altOf(img)), title)) img = null;
+    if (!img) {
+      const last = [...segs[ci].slice(-2500).matchAll(new RegExp(imgRe.source, 'gi'))].at(-1);
+      if (last && altOf(last) && sameProduct(decodeEntities(altOf(last)), title)) img = last;
+    }
+    if (img) { try { imageUrl = new URL(decodeEntities(img[1]), baseUrl).href; } catch { /* no image */ } }
+    out.push({ title, price: amount, url: url.href, inStock,
+      ...(Number.isFinite(listPrice) && listPrice > 0 ? { listPrice } : {}),
+      ...(imageUrl ? { imageUrl } : {}) });
   }
   return out;
 }
